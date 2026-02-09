@@ -27,11 +27,34 @@ impl Service {
             .stderr(Stdio::inherit())
             .status()
     }
+
+    fn run(&self, args: &[&str]) -> bool {
+        match self.overmind(args) {
+            Ok(s) if s.success() => true,
+            Ok(s) => {
+                eprintln!("failed (exit {})", s.code().unwrap_or(-1));
+                false
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                false
+            }
+        }
+    }
 }
 
 fn config_path() -> PathBuf {
     let home = env::var("HOME").expect("HOME not set");
-    Path::new(&home).join("dev/_daemons/services.tsv")
+    let home = Path::new(&home);
+    let xdg = home.join(".config/dm/services.tsv");
+    if xdg.exists() {
+        return xdg;
+    }
+    let legacy = home.join("dev/_daemons/services.tsv");
+    if legacy.exists() {
+        return legacy;
+    }
+    xdg
 }
 
 fn load_services() -> BTreeMap<String, Service> {
@@ -57,7 +80,12 @@ fn load_services() -> BTreeMap<String, Service> {
         }
 
         let name = parts[0].trim().to_string();
-        let dir_str = parts[1].trim().replace("~", &home);
+        let raw_dir = parts[1].trim();
+        let dir_str = if let Some(rest) = raw_dir.strip_prefix("~/") {
+            format!("{home}/{rest}")
+        } else {
+            raw_dir.to_string()
+        };
         let dir = PathBuf::from(&dir_str);
 
         if !dir.exists() {
@@ -88,24 +116,14 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
             continue;
         }
         eprint!("{}: starting... ", svc.name);
-        match svc.overmind(&["start", "-D"]) {
-            Ok(status) if status.success() => eprintln!("ok"),
-            Ok(status) => {
-                eprintln!("failed (exit {})", status.code().unwrap_or(-1));
-                failed = true;
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                failed = true;
-            }
+        if svc.run(&["start", "-D"]) {
+            eprintln!("ok");
+        } else {
+            failed = true;
         }
     }
 
-    if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    exit_code(failed)
 }
 
 fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
@@ -121,27 +139,15 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
             continue;
         }
         eprint!("{}: stopping... ", svc.name);
-        match svc.overmind(&["quit"]) {
-            Ok(status) if status.success() => {
-                let _ = fs::remove_file(svc.socket_path());
-                eprintln!("ok");
-            }
-            Ok(status) => {
-                eprintln!("failed (exit {})", status.code().unwrap_or(-1));
-                failed = true;
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                failed = true;
-            }
+        if svc.run(&["quit"]) {
+            let _ = fs::remove_file(svc.socket_path());
+            eprintln!("ok");
+        } else {
+            failed = true;
         }
     }
 
-    if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    exit_code(failed)
 }
 
 fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
@@ -197,19 +203,17 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
             failed = true;
             continue;
         }
-        match svc.overmind(&["start", "-D"]) {
-            Ok(status) if status.success() => eprintln!("ok"),
-            Ok(status) => {
-                eprintln!("failed (exit {})", status.code().unwrap_or(-1));
-                failed = true;
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                failed = true;
-            }
+        if svc.run(&["start", "-D"]) {
+            eprintln!("ok");
+        } else {
+            failed = true;
         }
     }
 
+    exit_code(failed)
+}
+
+fn exit_code(failed: bool) -> ExitCode {
     if failed {
         ExitCode::FAILURE
     } else {
@@ -253,8 +257,8 @@ fn print_usage() {
     eprintln!("  dm start anani         start just anani");
     eprintln!("  dm status anani        show anani's overmind process status");
     eprintln!("  dm echo anani          view anani's logs");
-    eprintln!("  dm anani connect web   attach to anani's web process");
-    eprintln!("  dm connect web anani   same thing, project name last");
+    eprintln!("  dm anani connect dev   attach to anani's dev process");
+    eprintln!("  dm connect dev anani   same thing, project name last");
 }
 
 fn main() -> ExitCode {
