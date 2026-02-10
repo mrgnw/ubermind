@@ -9,13 +9,15 @@ Manage multiple [overmind](https://github.com/DarthSim/overmind) instances acros
 ## Install
 
 ```sh
+# shell script (prebuilt binary)
 curl -fsSL https://raw.githubusercontent.com/mrgnw/ubermind/main/install.sh | sh
-```
 
-Or with cargo:
+# gah (github asset helper)
+gah install mrgnw/ubermind
 
-```sh
-cargo install ubermind
+# cargo
+cargo install ubermind       # from source
+cargo binstall ubermind      # prebuilt binary
 ```
 
 ## Quick start
