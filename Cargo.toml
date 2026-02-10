@@ -1,6 +1,6 @@
 [package]
 name = "ubermind"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Manage multiple overmind instances across projects"
 license = "MIT"
@@ -8,5 +8,9 @@ repository = "https://github.com/mrgnw/ubermind"
 keywords = ["overmind", "process-manager", "daemon", "procfile"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/ubermind-v{ version }-{ target }.tar.gz"
+pkg-fmt = "tgz"
 
 [dependencies]

@@ -8,7 +8,13 @@ Manage multiple [overmind](https://github.com/DarthSim/overmind) instances acros
 
 ## Install
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/mrgnw/ubermind/main/install.sh | sh
 ```
+
+Or with cargo:
+
+```sh
 cargo install ubermind
 ```
 
