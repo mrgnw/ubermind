@@ -52,12 +52,12 @@ ubermind connect web myapp   same thing, project name last
 
 ## Config
 
-Services are listed in `~/.config/ubermind/services.tsv` (tab-separated):
+Services are listed in `~/.config/ubermind/services` (Procfile-style):
 
 ```
-myapp	~/dev/myapp
-api	~/dev/api-server
-frontend	~/dev/frontend
+myapp: ~/dev/myapp
+api: ~/dev/api-server
+frontend: ~/dev/frontend
 ```
 
 Respects `$XDG_CONFIG_HOME` if set.

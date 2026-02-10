@@ -74,17 +74,18 @@ fn config_dir() -> PathBuf {
 }
 
 fn config_path() -> PathBuf {
-    let primary = config_dir().join("services.tsv");
+    let primary = config_dir().join("services");
     if primary.exists() {
         return primary;
     }
-    let legacy_dm = home_dir().join(".config/dm/services.tsv");
-    if legacy_dm.exists() {
-        return legacy_dm;
-    }
-    let legacy_daemons = home_dir().join("dev/_daemons/services.tsv");
-    if legacy_daemons.exists() {
-        return legacy_daemons;
+    for legacy in [
+        config_dir().join("services.tsv"),
+        home_dir().join(".config/dm/services.tsv"),
+        home_dir().join("dev/_daemons/services.tsv"),
+    ] {
+        if legacy.exists() {
+            return legacy;
+        }
     }
     primary
 }
@@ -111,7 +112,7 @@ fn load_services() -> BTreeMap<String, Service> {
             eprintln!("no services configured");
             eprintln!(
                 "run '{BIN} init' to create {}",
-                config_dir().join("services.tsv").display()
+                config_dir().join("services").display()
             );
             std::process::exit(1);
         }
@@ -125,9 +126,10 @@ fn load_services() -> BTreeMap<String, Service> {
             continue;
         }
 
-        let parts: Vec<&str> = line.splitn(2, '\t').collect();
+        let sep = if line.contains(':') { ':' } else { '\t' };
+        let parts: Vec<&str> = line.splitn(2, sep).collect();
         if parts.len() != 2 {
-            eprintln!("bad config line (expected name\\tdir): {line}");
+            eprintln!("bad config line (expected name: dir): {line}");
             continue;
         }
 
@@ -184,7 +186,7 @@ fn resolve_targets<'a>(
 
 fn cmd_init() -> ExitCode {
     let dir = config_dir();
-    let path = dir.join("services.tsv");
+    let path = dir.join("services");
     if path.exists() {
         eprintln!("config already exists: {}", path.display());
         return ExitCode::SUCCESS;
@@ -193,7 +195,7 @@ fn cmd_init() -> ExitCode {
         eprintln!("failed to create {}: {e}", dir.display());
         return ExitCode::FAILURE;
     }
-    let content = "# name\tdir\n# myapp\t~/dev/myapp\n";
+    let content = "# name: dir\n# myapp: ~/dev/myapp\n";
     match fs::write(&path, content) {
         Ok(_) => {
             eprintln!("created {}", path.display());
@@ -227,7 +229,8 @@ fn cmd_add(name: &str, dir: &str) -> ExitCode {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Some(existing_name) = line.split('\t').next() {
+        let sep = if line.contains(':') { ':' } else { '\t' };
+        if let Some(existing_name) = line.split(sep).next() {
             if existing_name.trim() == name {
                 eprintln!("service '{name}' already exists in {}", path.display());
                 return ExitCode::FAILURE;
@@ -243,7 +246,7 @@ fn cmd_add(name: &str, dir: &str) -> ExitCode {
         }
     };
 
-    if let Err(e) = writeln!(file, "{name}\t{dir}") {
+    if let Err(e) = writeln!(file, "{name}: {dir}") {
         eprintln!("failed to write: {e}");
         return ExitCode::FAILURE;
     }
