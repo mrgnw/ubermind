@@ -1,8 +1,11 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+
+const BIN: &str = "ubermind";
 
 struct Service {
     name: String,
@@ -43,28 +46,69 @@ impl Service {
     }
 }
 
+fn home_dir() -> PathBuf {
+    PathBuf::from(env::var("HOME").expect("HOME not set"))
+}
+
+fn expand_tilde(raw: &str) -> String {
+    if let Some(rest) = raw.strip_prefix("~/") {
+        format!("{}/{rest}", home_dir().display())
+    } else {
+        raw.to_string()
+    }
+}
+
+fn config_dir() -> PathBuf {
+    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
+        return Path::new(&xdg).join("ubermind");
+    }
+    home_dir().join(".config/ubermind")
+}
+
 fn config_path() -> PathBuf {
-    let home = env::var("HOME").expect("HOME not set");
-    let home = Path::new(&home);
-    let xdg = home.join(".config/dm/services.tsv");
-    if xdg.exists() {
-        return xdg;
+    let primary = config_dir().join("services.tsv");
+    if primary.exists() {
+        return primary;
     }
-    let legacy = home.join("dev/_daemons/services.tsv");
-    if legacy.exists() {
-        return legacy;
+    let legacy_dm = home_dir().join(".config/dm/services.tsv");
+    if legacy_dm.exists() {
+        return legacy_dm;
     }
-    xdg
+    let legacy_daemons = home_dir().join("dev/_daemons/services.tsv");
+    if legacy_daemons.exists() {
+        return legacy_daemons;
+    }
+    primary
+}
+
+fn check_overmind() {
+    if Command::new("overmind")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_err()
+    {
+        eprintln!("overmind not found in PATH");
+        eprintln!("install: https://github.com/DarthSim/overmind");
+        std::process::exit(1);
+    }
 }
 
 fn load_services() -> BTreeMap<String, Service> {
     let path = config_path();
-    let content = fs::read_to_string(&path).unwrap_or_else(|e| {
-        eprintln!("failed to read {}: {e}", path.display());
-        std::process::exit(1);
-    });
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("no services configured");
+            eprintln!(
+                "run '{BIN} init' to create {}",
+                config_dir().join("services.tsv").display()
+            );
+            std::process::exit(1);
+        }
+    };
 
-    let home = env::var("HOME").expect("HOME not set");
     let mut services = BTreeMap::new();
 
     for line in content.lines() {
@@ -80,12 +124,7 @@ fn load_services() -> BTreeMap<String, Service> {
         }
 
         let name = parts[0].trim().to_string();
-        let raw_dir = parts[1].trim();
-        let dir_str = if let Some(rest) = raw_dir.strip_prefix("~/") {
-            format!("{home}/{rest}")
-        } else {
-            raw_dir.to_string()
-        };
+        let dir_str = expand_tilde(parts[1].trim());
         let dir = PathBuf::from(&dir_str);
 
         if !dir.exists() {
@@ -96,6 +135,76 @@ fn load_services() -> BTreeMap<String, Service> {
     }
 
     services
+}
+
+fn cmd_init() -> ExitCode {
+    let dir = config_dir();
+    let path = dir.join("services.tsv");
+    if path.exists() {
+        eprintln!("config already exists: {}", path.display());
+        return ExitCode::SUCCESS;
+    }
+    if let Err(e) = fs::create_dir_all(&dir) {
+        eprintln!("failed to create {}: {e}", dir.display());
+        return ExitCode::FAILURE;
+    }
+    let content = "# name\tdir\n# myapp\t~/dev/myapp\n";
+    match fs::write(&path, content) {
+        Ok(_) => {
+            eprintln!("created {}", path.display());
+            eprintln!("add services with '{BIN} add <name> <dir>' or edit the file directly");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("failed to write {}: {e}", path.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_add(name: &str, dir: &str) -> ExitCode {
+    let path = config_path();
+    if !path.exists() {
+        eprintln!("no config file found. run '{BIN} init' first");
+        return ExitCode::FAILURE;
+    }
+    let expanded = expand_tilde(dir);
+    if !Path::new(&expanded).exists() {
+        eprintln!("warning: directory does not exist: {expanded}");
+    }
+    if !Path::new(&expanded).join("Procfile").exists() {
+        eprintln!("warning: no Procfile in {expanded}");
+    }
+
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    for line in existing.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(existing_name) = line.split('\t').next() {
+            if existing_name.trim() == name {
+                eprintln!("service '{name}' already exists in {}", path.display());
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let mut file = match fs::OpenOptions::new().append(true).open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("failed to open {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if let Err(e) = writeln!(file, "{name}\t{dir}") {
+        eprintln!("failed to write: {e}");
+        return ExitCode::FAILURE;
+    }
+
+    eprintln!("added {name} -> {dir}");
+    ExitCode::SUCCESS
 }
 
 fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
@@ -170,13 +279,7 @@ fn cmd_passthrough(svc: &Service, args: &[String]) -> ExitCode {
 
     let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     match svc.overmind(&str_args) {
-        Ok(status) => {
-            if status.success() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::FAILURE
-            }
-        }
+        Ok(s) => exit_code(!s.success()),
         Err(e) => {
             eprintln!("overmind error: {e}");
             ExitCode::FAILURE
@@ -242,23 +345,28 @@ fn resolve_targets<'a>(
 }
 
 fn print_usage() {
-    eprintln!("dm - daemon manager for overmind projects");
+    let v = env!("CARGO_PKG_VERSION");
+    eprintln!("{BIN} {v} - manage multiple overmind instances");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  dm status              show all services");
-    eprintln!("  dm start [name]        start service(s)");
-    eprintln!("  dm stop [name]         stop service(s)");
-    eprintln!("  dm reload [name]       restart service(s) (picks up Procfile changes)");
-    eprintln!("  dm <name> <cmd...>     pass command to project's overmind");
-    eprintln!("  dm <cmd> <name>        pass command to project's overmind");
+    eprintln!("  {BIN} status              show all services");
+    eprintln!("  {BIN} start [name]        start service(s)");
+    eprintln!("  {BIN} stop [name]         stop service(s)");
+    eprintln!("  {BIN} reload [name]       restart service(s) (picks up Procfile changes)");
+    eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
+    eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
+    eprintln!("  {BIN} init                create config file");
+    eprintln!("  {BIN} add <name> <dir>    add a service");
     eprintln!();
     eprintln!("examples:");
-    eprintln!("  dm start               start all services");
-    eprintln!("  dm start anani         start just anani");
-    eprintln!("  dm status anani        show anani's overmind process status");
-    eprintln!("  dm echo anani          view anani's logs");
-    eprintln!("  dm anani connect dev   attach to anani's dev process");
-    eprintln!("  dm connect dev anani   same thing, project name last");
+    eprintln!("  {BIN} start               start all services");
+    eprintln!("  {BIN} start myapp         start just myapp");
+    eprintln!("  {BIN} status myapp        show myapp's overmind process status");
+    eprintln!("  {BIN} echo myapp          view myapp's logs");
+    eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
+    eprintln!("  {BIN} connect web myapp   same thing, project name last");
+    eprintln!();
+    eprintln!("config: {}", config_path().display());
 }
 
 fn main() -> ExitCode {
@@ -269,13 +377,32 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let services = load_services();
-
     match args[0].as_str() {
         "help" | "--help" | "-h" => {
             print_usage();
-            ExitCode::SUCCESS
+            return ExitCode::SUCCESS;
         }
+        "version" | "--version" | "-V" => {
+            println!("{BIN} {}", env!("CARGO_PKG_VERSION"));
+            return ExitCode::SUCCESS;
+        }
+        "init" => return cmd_init(),
+        "add" => {
+            return match (args.get(1), args.get(2)) {
+                (Some(name), Some(dir)) => cmd_add(name, dir),
+                _ => {
+                    eprintln!("usage: {BIN} add <name> <dir>");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        _ => {}
+    }
+
+    check_overmind();
+    let services = load_services();
+
+    match args[0].as_str() {
         "status" | "st" => {
             if let Some(svc) = args.get(1).and_then(|n| services.get(n.as_str())) {
                 let mut passthrough_args = vec!["status".to_string()];
@@ -291,8 +418,8 @@ fn main() -> ExitCode {
         name => {
             if let Some(svc) = services.get(name) {
                 if args.len() < 2 {
-                    eprintln!("usage: dm {name} <overmind-command...>");
-                    eprintln!("example: dm {name} status");
+                    eprintln!("usage: {BIN} {name} <overmind-command...>");
+                    eprintln!("example: {BIN} {name} status");
                     return ExitCode::FAILURE;
                 }
                 cmd_passthrough(svc, &args[1..])
