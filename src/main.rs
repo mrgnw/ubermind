@@ -7,6 +7,8 @@ use std::process::{Command, ExitCode, Stdio};
 
 const BIN: &str = "ubermind";
 
+// --- Service ---
+
 struct Service {
     name: String,
     dir: PathBuf,
@@ -19,6 +21,10 @@ impl Service {
 
     fn is_running(&self) -> bool {
         self.socket_path().exists()
+    }
+
+    fn has_procfile(&self) -> bool {
+        self.dir.join("Procfile").exists()
     }
 
     fn overmind(&self, args: &[&str]) -> std::io::Result<std::process::ExitStatus> {
@@ -45,6 +51,8 @@ impl Service {
         }
     }
 }
+
+// --- Config ---
 
 fn home_dir() -> PathBuf {
     PathBuf::from(env::var("HOME").expect("HOME not set"))
@@ -137,6 +145,43 @@ fn load_services() -> BTreeMap<String, Service> {
     services
 }
 
+fn require_services() -> BTreeMap<String, Service> {
+    check_overmind();
+    load_services()
+}
+
+// --- Utilities ---
+
+fn exit_code(failed: bool) -> ExitCode {
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn resolve_targets<'a>(
+    services: &'a BTreeMap<String, Service>,
+    name: Option<&str>,
+) -> Option<Vec<&'a Service>> {
+    match name {
+        Some(n) => match services.get(n) {
+            Some(svc) => Some(vec![svc]),
+            None => {
+                eprintln!("unknown service: {n}");
+                eprintln!(
+                    "available: {}",
+                    services.keys().cloned().collect::<Vec<_>>().join(", ")
+                );
+                None
+            }
+        },
+        None => Some(services.values().collect()),
+    }
+}
+
+// --- Commands ---
+
 fn cmd_init() -> ExitCode {
     let dir = config_dir();
     let path = dir.join("services.tsv");
@@ -219,7 +264,7 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
             eprintln!("{}: already running", svc.name);
             continue;
         }
-        if !svc.dir.join("Procfile").exists() {
+        if !svc.has_procfile() {
             eprintln!("{}: no Procfile in {}", svc.name, svc.dir.display());
             failed = true;
             continue;
@@ -259,6 +304,35 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
     exit_code(failed)
 }
 
+fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
+    let targets = match resolve_targets(services, name) {
+        Some(t) => t,
+        None => return ExitCode::FAILURE,
+    };
+
+    let mut failed = false;
+    for svc in targets {
+        eprint!("{}: reloading... ", svc.name);
+        if svc.is_running() {
+            let _ = svc.overmind(&["quit"]);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let _ = fs::remove_file(svc.socket_path());
+        }
+        if !svc.has_procfile() {
+            eprintln!("no Procfile in {}", svc.dir.display());
+            failed = true;
+            continue;
+        }
+        if svc.run(&["start", "-D"]) {
+            eprintln!("ok");
+        } else {
+            failed = true;
+        }
+    }
+
+    exit_code(failed)
+}
+
 fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
     for svc in services.values() {
         let state = if svc.is_running() {
@@ -287,62 +361,7 @@ fn cmd_passthrough(svc: &Service, args: &[String]) -> ExitCode {
     }
 }
 
-fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
-    let targets = match resolve_targets(services, name) {
-        Some(t) => t,
-        None => return ExitCode::FAILURE,
-    };
-
-    let mut failed = false;
-    for svc in targets {
-        eprint!("{}: reloading... ", svc.name);
-        if svc.is_running() {
-            let _ = svc.overmind(&["quit"]);
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let _ = fs::remove_file(svc.socket_path());
-        }
-        if !svc.dir.join("Procfile").exists() {
-            eprintln!("no Procfile in {}", svc.dir.display());
-            failed = true;
-            continue;
-        }
-        if svc.run(&["start", "-D"]) {
-            eprintln!("ok");
-        } else {
-            failed = true;
-        }
-    }
-
-    exit_code(failed)
-}
-
-fn exit_code(failed: bool) -> ExitCode {
-    if failed {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
-}
-
-fn resolve_targets<'a>(
-    services: &'a BTreeMap<String, Service>,
-    name: Option<&str>,
-) -> Option<Vec<&'a Service>> {
-    match name {
-        Some(n) => match services.get(n) {
-            Some(svc) => Some(vec![svc]),
-            None => {
-                eprintln!("unknown service: {n}");
-                eprintln!(
-                    "available: {}",
-                    services.keys().cloned().collect::<Vec<_>>().join(", ")
-                );
-                None
-            }
-        },
-        None => Some(services.values().collect()),
-    }
-}
+// --- CLI ---
 
 fn print_usage() {
     let v = env!("CARGO_PKG_VERSION");
@@ -380,30 +399,22 @@ fn main() -> ExitCode {
     match args[0].as_str() {
         "help" | "--help" | "-h" => {
             print_usage();
-            return ExitCode::SUCCESS;
+            ExitCode::SUCCESS
         }
         "version" | "--version" | "-V" => {
             println!("{BIN} {}", env!("CARGO_PKG_VERSION"));
-            return ExitCode::SUCCESS;
+            ExitCode::SUCCESS
         }
-        "init" => return cmd_init(),
-        "add" => {
-            return match (args.get(1), args.get(2)) {
-                (Some(name), Some(dir)) => cmd_add(name, dir),
-                _ => {
-                    eprintln!("usage: {BIN} add <name> <dir>");
-                    ExitCode::FAILURE
-                }
-            };
-        }
-        _ => {}
-    }
-
-    check_overmind();
-    let services = load_services();
-
-    match args[0].as_str() {
+        "init" => cmd_init(),
+        "add" => match (args.get(1), args.get(2)) {
+            (Some(name), Some(dir)) => cmd_add(name, dir),
+            _ => {
+                eprintln!("usage: {BIN} add <name> <dir>");
+                ExitCode::FAILURE
+            }
+        },
         "status" | "st" => {
+            let services = require_services();
             if let Some(svc) = args.get(1).and_then(|n| services.get(n.as_str())) {
                 let mut passthrough_args = vec!["status".to_string()];
                 passthrough_args.extend_from_slice(&args[2..]);
@@ -412,10 +423,20 @@ fn main() -> ExitCode {
                 cmd_status(&services)
             }
         }
-        "start" => cmd_start(&services, args.get(1).map(|s| s.as_str())),
-        "stop" => cmd_stop(&services, args.get(1).map(|s| s.as_str())),
-        "reload" => cmd_reload(&services, args.get(1).map(|s| s.as_str())),
+        "start" => {
+            let s = require_services();
+            cmd_start(&s, args.get(1).map(|s| s.as_str()))
+        }
+        "stop" => {
+            let s = require_services();
+            cmd_stop(&s, args.get(1).map(|s| s.as_str()))
+        }
+        "reload" => {
+            let s = require_services();
+            cmd_reload(&s, args.get(1).map(|s| s.as_str()))
+        }
         name => {
+            let services = require_services();
             if let Some(svc) = services.get(name) {
                 if args.len() < 2 {
                     eprintln!("usage: {BIN} {name} <overmind-command...>");
