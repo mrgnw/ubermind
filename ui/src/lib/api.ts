@@ -1,0 +1,114 @@
+const API_PORT = 13369;
+
+function isTauri(): boolean {
+	return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
+function apiBase(): string {
+	if (typeof window === 'undefined') return `http://localhost:${API_PORT}`;
+	return `http://${window.location.hostname}:${API_PORT}`;
+}
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+	const { invoke } = await import('@tauri-apps/api/core');
+	return invoke<T>(cmd, args);
+}
+
+async function httpGet<T>(path: string): Promise<T> {
+	const res = await fetch(`${apiBase()}${path}`);
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({ error: res.statusText }));
+		throw new Error(body.error || res.statusText);
+	}
+	return res.json();
+}
+
+async function httpPost<T>(path: string): Promise<T> {
+	const res = await fetch(`${apiBase()}${path}`, { method: 'POST' });
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({ error: res.statusText }));
+		throw new Error(body.error || res.statusText);
+	}
+	return res.json();
+}
+
+async function httpGetText(path: string): Promise<string> {
+	const res = await fetch(`${apiBase()}${path}`);
+	if (!res.ok) throw new Error(res.statusText);
+	return res.text();
+}
+
+export interface ServiceInfo {
+	name: string;
+	dir: string;
+	running: boolean;
+}
+
+export interface ProcessInfo {
+	name: string;
+	pid: number | null;
+	status: string;
+}
+
+export interface ServiceDetail {
+	name: string;
+	dir: string;
+	running: boolean;
+	processes: ProcessInfo[];
+}
+
+export interface TmuxPane {
+	session: string;
+	window: number;
+	pane: number;
+	command: string;
+	pid: number;
+}
+
+export async function getServices(): Promise<ServiceInfo[]> {
+	if (isTauri()) return tauriInvoke('get_services');
+	return httpGet('/api/services');
+}
+
+export async function getServiceDetail(name: string): Promise<ServiceDetail> {
+	if (isTauri()) return tauriInvoke('get_service_detail', { name });
+	return httpGet(`/api/services/${name}`);
+}
+
+export async function startService(name: string): Promise<string> {
+	if (isTauri()) return tauriInvoke('start_service', { name });
+	const res = await httpPost<{ message: string }>(`/api/services/${name}/start`);
+	return res.message;
+}
+
+export async function stopService(name: string): Promise<string> {
+	if (isTauri()) return tauriInvoke('stop_service', { name });
+	const res = await httpPost<{ message: string }>(`/api/services/${name}/stop`);
+	return res.message;
+}
+
+export async function reloadService(name: string): Promise<string> {
+	if (isTauri()) return tauriInvoke('reload_service', { name });
+	const res = await httpPost<{ message: string }>(`/api/services/${name}/reload`);
+	return res.message;
+}
+
+export async function echoService(name: string): Promise<string> {
+	if (isTauri()) return tauriInvoke('echo_service', { name });
+	return httpGetText(`/api/services/${name}/echo`);
+}
+
+export async function getPanes(name: string): Promise<TmuxPane[]> {
+	if (isTauri()) return tauriInvoke('get_panes', { name });
+	return httpGet(`/api/services/${name}/panes`);
+}
+
+export async function capturePane(name: string, window: number, pane: number): Promise<string> {
+	if (isTauri()) return tauriInvoke('capture_pane', { name, window, pane });
+	return httpGetText(`/api/services/${name}/panes/${window}/${pane}`);
+}
+
+export function echoWebSocketUrl(name: string): string {
+	if (typeof window === 'undefined') return `ws://localhost:${API_PORT}/ws/echo/${name}`;
+	return `ws://${window.location.hostname}:${API_PORT}/ws/echo/${name}`;
+}
