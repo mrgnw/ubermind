@@ -73,26 +73,28 @@
 
 <svelte:window bind:innerWidth />
 
-<div class="page" style:--scale={scale}>
+<div
+	class="page"
+	style:--scale={scale}
+	style:--icon-size="{Math.round(22 * scale)}px"
+>
 	<header>
 		<a href="/" class="back" title="Back to services">
 			<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 3L5 8l5 5" /></svg>
 		</a>
-		<span class="dot" class:running={detail?.running ?? false}>
-			<span class="dot-inner"></span>
-		</span>
+		<span class="dot" class:running={detail?.running ?? false}></span>
 		<h1>{name}</h1>
 		{#if detail}
 			<span class="actions">
 				{#if detail.running}
-					<button class="action-btn stop" onclick={() => handleAction('stop')} disabled={loading} title="Stop">
+					<button class="icon stop" onclick={() => handleAction('stop')} disabled={loading} title="Stop">
 						<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
 					</button>
-					<button class="action-btn reload" onclick={() => handleAction('reload')} disabled={loading} title="Reload">
+					<button class="icon reload" onclick={() => handleAction('reload')} disabled={loading} title="Reload">
 						<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
 					</button>
 				{:else}
-					<button class="action-btn start" onclick={() => handleAction('start')} disabled={loading} title="Start">
+					<button class="icon start" onclick={() => handleAction('start')} disabled={loading} title="Start">
 						<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
 					</button>
 				{/if}
@@ -112,9 +114,7 @@
 				<div class="proc-list">
 					{#each detail.processes as proc}
 						<div class="proc-row">
-							<span class="proc-dot" class:running={proc.status === 'running'}>
-								<span class="proc-dot-inner"></span>
-							</span>
+							<span class="proc-dot" class:running={proc.status === 'running'}></span>
 							<span class="proc-name">{proc.name}</span>
 							<span class="proc-pid">{proc.pid ?? '-'}</span>
 						</div>
@@ -165,51 +165,31 @@
 	.back {
 		color: #555;
 		text-decoration: none;
-		padding: 6px;
-		border-radius: 6px;
 		display: flex;
 		align-items: center;
-		transition: all 0.15s;
+		padding: 0;
+		transition: color 0.15s;
 	}
 
 	.back svg {
-		width: calc(18px * var(--scale, 1));
-		height: calc(18px * var(--scale, 1));
+		width: var(--icon-size, 22px);
+		height: var(--icon-size, 22px);
 	}
 
 	.back:hover {
 		color: #ccc;
-		background: #1a1a2e;
 	}
 
 	.dot {
-		width: calc(16px * var(--scale, 1));
-		height: calc(16px * var(--scale, 1));
+		width: calc(14px * var(--scale, 1));
+		height: calc(14px * var(--scale, 1));
 		border-radius: 50%;
-		background: radial-gradient(circle at 35% 35%, #ee5555, #aa2222);
+		background: #cc4444;
 		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow: 0 1px 3px #00000044;
 	}
 
 	.dot.running {
-		background: radial-gradient(circle at 35% 35%, #55ee55, #22aa22);
-		box-shadow: 0 0 8px #44bb4455, 0 1px 3px #00000044;
-		animation: pulse 3s ease-in-out infinite;
-	}
-
-	.dot-inner {
-		width: 35%;
-		height: 35%;
-		border-radius: 50%;
-		background: radial-gradient(circle, #ffffff88, transparent);
-	}
-
-	@keyframes pulse {
-		0%, 100% { box-shadow: 0 0 6px #44bb4433, 0 1px 3px #00000044; }
-		50% { box-shadow: 0 0 14px #44bb4466, 0 1px 3px #00000044; }
+		background: #44bb44;
 	}
 
 	h1 {
@@ -234,38 +214,37 @@
 
 	.actions {
 		display: flex;
-		gap: 8px;
+		gap: calc(10px * var(--scale, 1));
 	}
 
-	.action-btn {
-		width: calc(34px * var(--scale, 1));
-		height: calc(34px * var(--scale, 1));
-		border: 1px solid #2a2a3e;
-		border-radius: 6px;
-		background: #1c1c30;
-		color: #777;
+	.icon {
+		width: var(--icon-size, 22px);
+		height: var(--icon-size, 22px);
+		border: none;
+		background: none;
+		color: #555;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		padding: 0;
-		transition: all 0.15s;
+		transition: color 0.15s;
 	}
 
-	.action-btn svg {
-		width: 55%;
-		height: 55%;
+	.icon svg {
+		width: 100%;
+		height: 100%;
 	}
 
-	.action-btn:hover { border-color: #444; color: #ccc; background: #252540; }
-	.action-btn.start:hover { border-color: #2d5a2d; color: #6bdd6b; background: #1a2e1a; }
-	.action-btn.stop:hover { border-color: #5a2d2d; color: #dd6b6b; background: #2e1a1a; }
-	.action-btn.reload:hover { border-color: #3d3d6a; color: #8888dd; background: #1e1e3a; }
-	.action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+	.icon:hover { color: #ccc; }
+	.icon.start:hover { color: #55cc55; }
+	.icon.stop:hover { color: #dd6666; }
+	.icon.reload:hover { color: #7777cc; }
+	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	.path {
 		font-size: calc(0.8rem * var(--scale, 1));
-		color: #444;
+		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 		margin-left: auto;
 	}
@@ -298,23 +277,12 @@
 		width: calc(9px * var(--scale, 1));
 		height: calc(9px * var(--scale, 1));
 		border-radius: 50%;
-		background: radial-gradient(circle at 35% 35%, #ee5555, #aa2222);
+		background: #cc4444;
 		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		box-shadow: 0 1px 2px #00000033;
 	}
 
 	.proc-dot.running {
-		background: radial-gradient(circle at 35% 35%, #55ee55, #22aa22);
-	}
-
-	.proc-dot-inner {
-		width: 30%;
-		height: 30%;
-		border-radius: 50%;
-		background: radial-gradient(circle, #ffffff66, transparent);
+		background: #44bb44;
 	}
 
 	.proc-name {

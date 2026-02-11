@@ -2,12 +2,12 @@
 	import { onMount } from 'svelte';
 	import { getServices, startService, stopService, reloadService, type ServiceInfo } from '$lib/api';
 	import ServiceRow from '$lib/components/ServiceRow.svelte';
+	import logoSvg from '$lib/assets/logo.svg';
 
 	let services = $state<ServiceInfo[]>([]);
 	let error = $state('');
 	let refreshTimer: ReturnType<typeof setInterval>;
 	let innerWidth = $state(800);
-	let innerHeight = $state(600);
 	let selectedNames = $state<Set<string>>(new Set());
 	let bulkMode = $state(false);
 	let bulkLoading = $state(false);
@@ -101,7 +101,7 @@
 	});
 </script>
 
-<svelte:window bind:innerWidth bind:innerHeight />
+<svelte:window bind:innerWidth />
 
 <div
 	class="page"
@@ -110,35 +110,10 @@
 	style:--row-px="{Math.round(16 * scale)}px"
 	style:--dot-size="{Math.round(14 * scale)}px"
 	style:--name-size="{1.1 * scale}rem"
-	style:--btn-size="{Math.round(32 * scale)}px"
+	style:--icon-size="{Math.round(22 * scale)}px"
+	style:--icon-gap="{Math.round(10 * scale)}px"
 	style:--path-size="{0.82 * scale}rem"
 >
-	<header>
-		<h1>ubermind</h1>
-		<div class="header-actions">
-			<span class="summary">
-				{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
-			</span>
-			<button class="header-btn" onclick={() => { bulkMode = !bulkMode; if (!bulkMode) selectedNames = new Set(); }}>
-				{bulkMode ? 'done' : 'select'}
-			</button>
-			{#if !bulkMode}
-				{#if stoppedCount > 0}
-					<button class="header-btn start-all" onclick={bulkStartAll} disabled={bulkLoading}>
-						<svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12"><path d="M4 2.5v11l9-5.5z" /></svg>
-						start all
-					</button>
-				{/if}
-				{#if runningCount > 0}
-					<button class="header-btn stop-all" onclick={bulkStopAll} disabled={bulkLoading}>
-						<svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-						stop all
-					</button>
-				{/if}
-			{/if}
-		</div>
-	</header>
-
 	{#if error}
 		<div class="error">
 			{error}
@@ -150,19 +125,16 @@
 		<div class="bulk-bar">
 			<span class="bulk-count">{selectedNames.size} selected</span>
 			{#if selectedStopped > 0}
-				<button class="bulk-btn start" onclick={() => bulkAction('start')} disabled={bulkLoading}>
-					<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M4 2.5v11l9-5.5z" /></svg>
-					start
+				<button class="bulk-icon start" onclick={() => bulkAction('start')} disabled={bulkLoading} title="Start selected">
+					<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
 				</button>
 			{/if}
 			{#if selectedRunning > 0}
-				<button class="bulk-btn stop" onclick={() => bulkAction('stop')} disabled={bulkLoading}>
-					<svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-					stop
+				<button class="bulk-icon stop" onclick={() => bulkAction('stop')} disabled={bulkLoading} title="Stop selected">
+					<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
 				</button>
-				<button class="bulk-btn reload" onclick={() => bulkAction('reload')} disabled={bulkLoading}>
-					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
-					reload
+				<button class="bulk-icon reload" onclick={() => bulkAction('reload')} disabled={bulkLoading} title="Reload selected">
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
 				</button>
 			{/if}
 		</div>
@@ -170,15 +142,38 @@
 
 	<div class="list" class:with-check={bulkMode}>
 		{#if bulkMode}
-			<label class="select-all-cell">
+			<label class="check-cell header-check">
 				<input type="checkbox" checked={allSelected} onchange={toggleAll} />
 			</label>
 		{/if}
-		<!-- column headers occupy 1 grid row to avoid visual shift -->
-		<span class="col-header dot-col"></span>
-		<span class="col-header name-col"></span>
-		<span class="col-header actions-col"></span>
-		<span class="col-header path-col"></span>
+		<span class="logo-cell">
+			<img src={logoSvg} alt="" class="logo" />
+		</span>
+		<span class="header-name">ubermind</span>
+		<span class="header-actions">
+			{#if !bulkMode}
+				{#if stoppedCount > 0}
+					<button class="icon start" onclick={bulkStartAll} disabled={bulkLoading} title="Start all">
+						<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
+					</button>
+				{/if}
+				{#if runningCount > 0}
+					<button class="icon stop" onclick={bulkStopAll} disabled={bulkLoading} title="Stop all">
+						<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+					</button>
+				{/if}
+			{/if}
+			<button class="icon select-toggle" onclick={() => { bulkMode = !bulkMode; if (!bulkMode) selectedNames = new Set(); }} title={bulkMode ? 'Done selecting' : 'Select'}>
+				{#if bulkMode}
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5l3 3 6-7" /></svg>
+				{:else}
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
+				{/if}
+			</button>
+		</span>
+		<span class="header-summary">
+			{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
+		</span>
 
 		{#each services as service (service.name)}
 			<ServiceRow
@@ -202,146 +197,144 @@
 		margin: 0 auto;
 	}
 
-	header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: calc(14px * var(--scale, 1));
-		flex-wrap: wrap;
-		gap: 12px;
-	}
-
-	h1 {
-		font-size: calc(1.3rem * var(--scale, 1));
-		font-weight: 700;
-		color: #ccc;
-		margin: 0;
-		letter-spacing: 0.02em;
-	}
-
-	.header-actions {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
-	.summary {
-		font-size: 0.8rem;
-		color: #555;
-	}
-
-	.header-btn {
-		padding: 5px 12px;
-		border: 1px solid #2a2a3e;
-		border-radius: 5px;
-		background: #1a1a2e;
-		color: #888;
-		cursor: pointer;
-		font-size: 0.8rem;
-		font-family: inherit;
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		transition: all 0.15s;
-	}
-
-	.header-btn:hover {
-		border-color: #444;
-		color: #ccc;
-		background: #222240;
-	}
-
-	.header-btn.start-all:hover {
-		border-color: #2d5a2d;
-		color: #6bdd6b;
-	}
-
-	.header-btn.stop-all:hover {
-		border-color: #5a2d2d;
-		color: #dd6b6b;
-	}
-
-	.header-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.bulk-bar {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 10px 16px;
-		margin-bottom: 8px;
-		background: #161630;
-		border: 1px solid #2a2a4a;
-		border-radius: 6px;
-	}
-
-	.bulk-count {
-		font-size: 0.85rem;
-		color: #999;
-		margin-right: auto;
-	}
-
-	.bulk-btn {
-		padding: 5px 14px;
-		border: 1px solid #333;
-		border-radius: 5px;
-		background: #1c1c34;
-		color: #aaa;
-		cursor: pointer;
-		font-size: 0.8rem;
-		font-family: inherit;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		transition: all 0.15s;
-	}
-
-	.bulk-btn:hover {
-		background: #252545;
-		border-color: #555;
-		color: #ddd;
-	}
-
-	.bulk-btn.start:hover { color: #6bdd6b; border-color: #2d5a2d; }
-	.bulk-btn.stop:hover { color: #dd6b6b; border-color: #5a2d2d; }
-	.bulk-btn.reload:hover { color: #8888dd; border-color: #3d3d6a; }
-	.bulk-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
 	.list {
 		display: grid;
 		grid-template-columns: 40px auto auto minmax(0, 1fr);
 		align-items: center;
-		border-top: 1px solid #1a1a2a;
 	}
 
 	.list.with-check {
 		grid-template-columns: 36px 40px auto auto minmax(0, 1fr);
 	}
 
-	.select-all-cell {
+	.logo-cell {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 8px 0;
-		border-bottom: 1px solid #1a1a2a;
-		cursor: pointer;
+		padding: var(--row-py, 14px) 0;
 		padding-left: var(--row-px, 16px);
+		border-bottom: 1px solid #222238;
 	}
 
-	.select-all-cell input {
+	.logo {
+		width: calc(22px * var(--scale, 1));
+		height: calc(22px * var(--scale, 1));
+		opacity: 0.5;
+	}
+
+	.header-name {
+		font-size: calc(1.2rem * var(--scale, 1));
+		font-weight: 700;
+		color: #666;
+		padding: var(--row-py, 14px) 0;
+		padding-left: 12px;
+		padding-right: 20px;
+		border-bottom: 1px solid #222238;
+		display: flex;
+		align-items: center;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--icon-gap, 10px);
+		padding: var(--row-py, 14px) 0;
+		padding-right: 20px;
+		border-bottom: 1px solid #222238;
+	}
+
+	.header-summary {
+		font-size: var(--path-size, 0.82rem);
+		color: #3a3a4a;
+		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+		padding: var(--row-py, 14px) 0;
+		padding-right: var(--row-px, 16px);
+		border-bottom: 1px solid #222238;
+		display: flex;
+		align-items: center;
+	}
+
+	.header-check {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--row-py, 14px) 0;
+		padding-left: var(--row-px, 16px);
+		border-bottom: 1px solid #222238;
+		cursor: pointer;
+	}
+
+	.header-check input {
 		width: 15px;
 		height: 15px;
 		accent-color: #6366f1;
 		cursor: pointer;
 	}
 
-	.col-header {
+	.icon {
+		width: var(--icon-size, 22px);
+		height: var(--icon-size, 22px);
+		border: none;
+		background: none;
+		color: #555;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		padding: 0;
-		border-bottom: 1px solid #1a1a2a;
-		height: 1px;
+		transition: color 0.15s;
 	}
+
+	.icon svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.icon:hover { color: #ccc; }
+	.icon.start:hover { color: #55cc55; }
+	.icon.stop:hover { color: #dd6666; }
+	.icon.select-toggle:hover { color: #aaa; }
+	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
+
+	.bulk-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 16px;
+		margin-bottom: 4px;
+		border-bottom: 1px solid #1a1a2a;
+	}
+
+	.bulk-count {
+		font-size: 0.82rem;
+		color: #666;
+		margin-right: auto;
+	}
+
+	.bulk-icon {
+		width: var(--icon-size, 22px);
+		height: var(--icon-size, 22px);
+		border: none;
+		background: none;
+		color: #555;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: color 0.15s;
+	}
+
+	.bulk-icon svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.bulk-icon:hover { color: #ccc; }
+	.bulk-icon.start:hover { color: #55cc55; }
+	.bulk-icon.stop:hover { color: #dd6666; }
+	.bulk-icon.reload:hover { color: #7777cc; }
+	.bulk-icon:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	@media (max-width: 500px) {
 		.list {
@@ -349,6 +342,9 @@
 		}
 		.list.with-check {
 			grid-template-columns: 36px 40px auto auto;
+		}
+		.header-summary {
+			display: none !important;
 		}
 	}
 

@@ -56,45 +56,24 @@
 	{/if}
 
 	<span class="dot-cell">
-		<span class="dot" class:running={service.running}>
-			<span class="dot-inner"></span>
-		</span>
+		<span class="dot" class:running={service.running}></span>
 	</span>
 
 	<a href="/service/{service.name}" class="name">{service.name}</a>
 
 	<span class="actions">
 		{#if service.running}
-			<button
-				class="action-btn stop"
-				onclick={(e) => handleAction(e, 'stop')}
-				disabled={loading}
-				title="Stop"
-			>
+			<button class="icon stop" onclick={(e) => handleAction(e, 'stop')} disabled={loading} title="Stop">
 				<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
 			</button>
-			<button
-				class="action-btn reload"
-				onclick={(e) => handleAction(e, 'reload')}
-				disabled={loading}
-				title="Reload"
-			>
+			<button class="icon reload" onclick={(e) => handleAction(e, 'reload')} disabled={loading} title="Reload">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
 			</button>
-			<a
-				href="/service/{service.name}"
-				class="action-btn echo"
-				title="Echo"
-			>
+			<a href="/service/{service.name}" class="icon echo" title="Echo">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 2 8 4 10" /><polyline points="12 6 14 8 12 10" /><rect x="1" y="2" width="14" height="12" rx="2" fill="none" /></svg>
 			</a>
 		{:else}
-			<button
-				class="action-btn start"
-				onclick={(e) => handleAction(e, 'start')}
-				disabled={loading}
-				title="Start"
-			>
+			<button class="icon start" onclick={(e) => handleAction(e, 'start')} disabled={loading} title="Start">
 				<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
 			</button>
 		{/if}
@@ -117,7 +96,7 @@
 	}
 
 	.row:hover > :global(*) {
-		background: #13132266;
+		background: #12122066;
 	}
 
 	.check-cell {
@@ -142,36 +121,18 @@
 		width: var(--dot-size, 14px);
 		height: var(--dot-size, 14px);
 		border-radius: 50%;
-		background: radial-gradient(circle at 35% 35%, #ee5555, #aa2222);
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		background: #cc4444;
 		flex-shrink: 0;
-		box-shadow: 0 1px 3px #00000044;
 	}
 
 	.dot.running {
-		background: radial-gradient(circle at 35% 35%, #55ee55, #22aa22);
-		box-shadow: 0 0 8px #44bb4455, 0 1px 3px #00000044;
-		animation: pulse 3s ease-in-out infinite;
-	}
-
-	.dot-inner {
-		width: 35%;
-		height: 35%;
-		border-radius: 50%;
-		background: radial-gradient(circle, #ffffff88, transparent);
-	}
-
-	@keyframes pulse {
-		0%, 100% { box-shadow: 0 0 6px #44bb4433, 0 1px 3px #00000044; }
-		50% { box-shadow: 0 0 14px #44bb4466, 0 1px 3px #00000044; }
+		background: #44bb44;
 	}
 
 	.name {
 		font-size: var(--name-size, 1.15rem);
 		font-weight: 600;
-		color: #e8e8e8;
+		color: #e0e0e0;
 		text-decoration: none;
 		white-space: nowrap;
 		padding-left: 12px;
@@ -183,70 +144,41 @@
 	}
 
 	.actions {
-		gap: 8px;
+		gap: var(--icon-gap, 10px);
 		white-space: nowrap;
 		padding-right: 20px;
 	}
 
-	.action-btn {
-		width: var(--btn-size, 32px);
-		height: var(--btn-size, 32px);
-		border: 1px solid #2a2a3e;
-		border-radius: 6px;
-		background: #1c1c30;
-		color: #777;
+	.icon {
+		width: var(--icon-size, 22px);
+		height: var(--icon-size, 22px);
+		border: none;
+		background: none;
+		color: #555;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		padding: 0;
 		text-decoration: none;
-		transition: all 0.15s;
+		transition: color 0.15s;
 	}
 
-	.action-btn svg {
-		width: 55%;
-		height: 55%;
+	.icon svg {
+		width: 100%;
+		height: 100%;
 	}
 
-	.action-btn:hover {
-		border-color: #444;
-		color: #ccc;
-		background: #252540;
-	}
-
-	.action-btn.start:hover {
-		border-color: #2d5a2d;
-		color: #6bdd6b;
-		background: #1a2e1a;
-	}
-
-	.action-btn.stop:hover {
-		border-color: #5a2d2d;
-		color: #dd6b6b;
-		background: #2e1a1a;
-	}
-
-	.action-btn.reload:hover {
-		border-color: #3d3d6a;
-		color: #8888dd;
-		background: #1e1e3a;
-	}
-
-	.action-btn.echo:hover {
-		border-color: #3d5a3d;
-		color: #88cc88;
-		background: #1a2a1a;
-	}
-
-	.action-btn:disabled {
-		opacity: 0.3;
-		cursor: not-allowed;
-	}
+	.icon:hover { color: #ccc; }
+	.icon.start:hover { color: #55cc55; }
+	.icon.stop:hover { color: #dd6666; }
+	.icon.reload:hover { color: #7777cc; }
+	.icon.echo:hover { color: #66aa88; }
+	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	.path {
 		font-size: var(--path-size, 0.85rem);
-		color: #444;
+		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 		white-space: nowrap;
 		overflow: hidden;
