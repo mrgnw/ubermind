@@ -124,7 +124,8 @@
 				<img src={logoSvg} alt="" class="logo" />
 			</span>
 			<span class="title-name">ubermind</span>
-			<span class="title-spacer"></span>
+			<span class="title-pad"></span>
+			<span class="title-pad"></span>
 		</div>
 
 		<div class="header-row">
@@ -138,7 +139,7 @@
 					/>
 				</label>
 			</span>
-			<span class="header-name">
+			<span class="header-label">
 				{#if hasSelection}
 					{selectedNames.size} selected
 				{/if}
@@ -170,9 +171,9 @@
 						</button>
 					{/if}
 				{/if}
-				<span class="summary">
-					{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
-				</span>
+			</span>
+			<span class="header-summary">
+				{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
 			</span>
 		</div>
 
@@ -200,7 +201,7 @@
 
 	.list {
 		display: grid;
-		grid-template-columns: calc(60px * var(--scale, 1)) auto 1fr;
+		grid-template-columns: calc(60px * var(--scale, 1)) auto auto 1fr;
 		align-items: center;
 	}
 
@@ -232,7 +233,7 @@
 		letter-spacing: 0.01em;
 	}
 
-	.title-spacer {
+	.title-pad {
 		display: block;
 	}
 
@@ -265,7 +266,7 @@
 		cursor: pointer;
 	}
 
-	.header-name {
+	.header-label {
 		font-size: calc(0.9rem * var(--scale, 1));
 		color: #555;
 		padding: calc(14px * var(--scale, 1)) 0;
@@ -274,20 +275,21 @@
 	.header-actions {
 		display: flex;
 		align-items: center;
-		gap: calc(16px * var(--scale, 1));
+		gap: var(--icon-gap, 14px);
 		padding: calc(14px * var(--scale, 1)) 0;
-		justify-content: flex-end;
 	}
 
-	.summary {
+	.header-summary {
 		font-size: calc(0.95rem * var(--scale, 1));
 		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+		padding: calc(14px * var(--scale, 1)) 0;
+		text-align: right;
 	}
 
 	.hicon {
-		width: calc(28px * var(--scale, 1));
-		height: calc(28px * var(--scale, 1));
+		width: var(--icon-size, 28px);
+		height: var(--icon-size, 28px);
 		border: none;
 		background: none;
 		color: #555;

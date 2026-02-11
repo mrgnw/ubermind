@@ -73,6 +73,8 @@
 			</button>
 		{/if}
 	</span>
+
+	<span class="spacer"></span>
 </a>
 
 <style>
@@ -169,4 +171,8 @@
 	.icon.reload:hover { color: #7777cc; }
 	.icon.echo:hover { color: #66aa88; }
 	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
+
+	.spacer {
+		padding: var(--row-py, 16px) 0;
+	}
 </style>
