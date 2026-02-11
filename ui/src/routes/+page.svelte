@@ -145,32 +145,33 @@
 				{/if}
 			</span>
 			<span class="header-actions">
-				{#if hasSelection}
-					{#if selectedStopped > 0}
-						<button class="hicon start" onclick={() => bulkAction('start')} disabled={bulkLoading} title="Start selected">
-							<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
-						</button>
-					{/if}
-					{#if selectedRunning > 0}
-						<button class="hicon stop" onclick={() => bulkAction('stop')} disabled={bulkLoading} title="Stop selected">
-							<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-						</button>
-						<button class="hicon reload" onclick={() => bulkAction('reload')} disabled={bulkLoading} title="Reload selected">
-							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
-						</button>
-					{/if}
-				{:else}
-					{#if stoppedCount > 0}
-						<button class="hicon start" onclick={() => actionAll('start')} disabled={bulkLoading} title="Start all">
-							<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
-						</button>
-					{/if}
-					{#if runningCount > 0}
-						<button class="hicon stop" onclick={() => actionAll('stop')} disabled={bulkLoading} title="Stop all">
-							<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-						</button>
-					{/if}
-				{/if}
+				<button
+					class="hicon start"
+					class:hidden={hasSelection ? selectedStopped === 0 : stoppedCount === 0}
+					onclick={() => hasSelection ? bulkAction('start') : actionAll('start')}
+					disabled={bulkLoading}
+					title={hasSelection ? 'Start selected' : 'Start all'}
+				>
+					<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
+				</button>
+				<button
+					class="hicon stop"
+					class:hidden={hasSelection ? selectedRunning === 0 : runningCount === 0}
+					onclick={() => hasSelection ? bulkAction('stop') : actionAll('stop')}
+					disabled={bulkLoading}
+					title={hasSelection ? 'Stop selected' : 'Stop all'}
+				>
+					<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+				</button>
+				<button
+					class="hicon reload"
+					class:hidden={!hasSelection || selectedRunning === 0}
+					onclick={() => bulkAction('reload')}
+					disabled={bulkLoading}
+					title="Reload selected"
+				>
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
+				</button>
 			</span>
 			<span class="header-summary">
 				{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
@@ -311,6 +312,7 @@
 	.hicon.stop:hover { color: #dd6666; }
 	.hicon.reload:hover { color: #7777cc; }
 	.hicon:disabled { opacity: 0.25; cursor: not-allowed; }
+	.hicon.hidden { visibility: hidden; }
 
 	.error {
 		background: #2a1010;
