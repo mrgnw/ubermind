@@ -111,10 +111,6 @@
 	style:--icon-size="{Math.round(28 * scale)}px"
 	style:--icon-gap="{Math.round(14 * scale)}px"
 >
-	<div class="logo-banner">
-		<img src={logoSvg} alt="ubermind" class="logo" />
-	</div>
-
 	{#if error}
 		<div class="error">
 			{error}
@@ -123,6 +119,14 @@
 	{/if}
 
 	<div class="list">
+		<div class="title-row">
+			<span class="title-logo">
+				<img src={logoSvg} alt="" class="logo" />
+			</span>
+			<span class="title-name">ubermind</span>
+			<span class="title-spacer"></span>
+		</div>
+
 		<div class="header-row">
 			<span class="header-dot-cell">
 				<label class="header-check">
@@ -134,7 +138,11 @@
 					/>
 				</label>
 			</span>
-			<span class="header-name">ubermind</span>
+			<span class="header-name">
+				{#if hasSelection}
+					{selectedNames.size} selected
+				{/if}
+			</span>
 			<span class="header-actions">
 				{#if hasSelection}
 					{#if selectedStopped > 0}
@@ -190,23 +198,42 @@
 		margin: 0 auto;
 	}
 
-	.logo-banner {
-		display: flex;
-		justify-content: center;
-		padding: calc(28px * var(--scale, 1)) 0 calc(20px * var(--scale, 1));
-	}
-
-	.logo {
-		width: calc(72px * var(--scale, 1));
-		height: calc(72px * var(--scale, 1));
-		opacity: 0.6;
-		filter: brightness(0) invert(1);
-	}
-
 	.list {
 		display: grid;
 		grid-template-columns: calc(60px * var(--scale, 1)) auto 1fr;
 		align-items: center;
+	}
+
+	.title-row {
+		display: grid;
+		grid-template-columns: subgrid;
+		grid-column: 1 / -1;
+		align-items: center;
+		padding: calc(28px * var(--scale, 1)) 0 calc(16px * var(--scale, 1));
+	}
+
+	.title-logo {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.logo {
+		width: calc(44px * var(--scale, 1));
+		height: calc(44px * var(--scale, 1));
+		opacity: 0.5;
+		filter: brightness(0) invert(1);
+	}
+
+	.title-name {
+		font-size: calc(2rem * var(--scale, 1));
+		font-weight: 700;
+		color: #444;
+		letter-spacing: 0.01em;
+	}
+
+	.title-spacer {
+		display: block;
 	}
 
 	.header-row {
@@ -221,7 +248,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: calc(24px * var(--scale, 1)) 0;
+		padding: calc(14px * var(--scale, 1)) 0;
 	}
 
 	.header-check {
@@ -239,29 +266,28 @@
 	}
 
 	.header-name {
-		font-size: calc(1.7rem * var(--scale, 1));
-		font-weight: 700;
+		font-size: calc(0.9rem * var(--scale, 1));
 		color: #555;
-		padding: calc(24px * var(--scale, 1)) 0;
+		padding: calc(14px * var(--scale, 1)) 0;
 	}
 
 	.header-actions {
 		display: flex;
 		align-items: center;
 		gap: calc(16px * var(--scale, 1));
-		padding: calc(24px * var(--scale, 1)) 0;
+		padding: calc(14px * var(--scale, 1)) 0;
 		justify-content: flex-end;
 	}
 
 	.summary {
-		font-size: calc(1rem * var(--scale, 1));
+		font-size: calc(0.95rem * var(--scale, 1));
 		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 	}
 
 	.hicon {
-		width: calc(32px * var(--scale, 1));
-		height: calc(32px * var(--scale, 1));
+		width: calc(28px * var(--scale, 1));
+		height: calc(28px * var(--scale, 1));
 		border: none;
 		background: none;
 		color: #555;
