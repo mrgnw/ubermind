@@ -67,8 +67,10 @@ tar -xzf "${tmpdir}/${archive}" -C "${tmpdir}"
 mkdir -p "${install_dir}"
 mv "${tmpdir}/${bin}" "${install_dir}/${bin}"
 chmod +x "${install_dir}/${bin}"
+ln -sf "${install_dir}/${bin}" "${install_dir}/ub"
 
 echo "installed ${install_dir}/${bin}"
+echo "created alias ${install_dir}/ub"
 
 if ! echo "${PATH}" | tr ':' '\n' | grep -qx "${install_dir}"; then
 	echo

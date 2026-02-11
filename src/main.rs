@@ -7,11 +7,20 @@ use std::process::{Command, ExitCode, Stdio};
 
 const BIN: &str = "ubermind";
 
+const OVERMIND_COMMANDS: &[&str] = &["kill", "echo", "restart", "connect", "quit", "run"];
+
 // --- Service ---
 
 struct Service {
     name: String,
     dir: PathBuf,
+    command: Option<String>,
+}
+
+impl Service {
+    fn is_command_based(&self) -> bool {
+        self.command.is_some()
+    }
 }
 
 impl Service {
@@ -20,7 +29,37 @@ impl Service {
     }
 
     fn is_running(&self) -> bool {
-        self.socket_path().exists()
+        if !self.socket_path().exists() {
+            return false;
+        }
+        if self.is_command_based() {
+            self.process_is_running()
+        } else {
+            true
+        }
+    }
+
+    fn process_is_running(&self) -> bool {
+        let output = Command::new("overmind")
+            .args(["status"])
+            .current_dir(&self.dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output();
+
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 && parts[0] == self.name {
+                        return parts[1] != "exited";
+                    }
+                }
+                false
+            }
+            Err(_) => false,
+        }
     }
 
     fn has_procfile(&self) -> bool {
@@ -104,18 +143,11 @@ fn check_overmind() {
     }
 }
 
-fn load_services() -> BTreeMap<String, Service> {
+fn load_config_services() -> BTreeMap<String, Service> {
     let path = config_path();
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => {
-            eprintln!("no services configured");
-            eprintln!(
-                "run '{BIN} init' to create {}",
-                config_dir().join("services").display()
-            );
-            std::process::exit(1);
-        }
+        Err(_) => return BTreeMap::new(),
     };
 
     let mut services = BTreeMap::new();
@@ -141,15 +173,69 @@ fn load_services() -> BTreeMap<String, Service> {
             eprintln!("warning: dir does not exist for {name}: {dir_str}");
         }
 
-        services.insert(name.clone(), Service { name, dir });
+        services.insert(
+            name.clone(),
+            Service {
+                name,
+                dir,
+                command: None,
+            },
+        );
     }
 
     services
 }
 
+fn load_procfile_services() -> BTreeMap<String, Service> {
+    let path = config_dir().join("Procfile");
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return BTreeMap::new(),
+    };
+
+    let mut services = BTreeMap::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some((name, cmd)) = line.split_once(':') {
+            let name = name.trim().to_string();
+            let cmd = cmd.trim().to_string();
+            services.insert(
+                name.clone(),
+                Service {
+                    name,
+                    dir: config_dir(),
+                    command: Some(cmd),
+                },
+            );
+        }
+    }
+
+    services
+}
+
+fn load_services() -> BTreeMap<String, Service> {
+    let mut services = load_config_services();
+    services.extend(load_procfile_services());
+    services
+}
+
 fn require_services() -> BTreeMap<String, Service> {
     check_overmind();
-    load_services()
+    let services = load_services();
+    if services.is_empty() {
+        eprintln!("no services configured");
+        eprintln!(
+            "run '{BIN} init' to create {}",
+            config_dir().join("services").display()
+        );
+        std::process::exit(1);
+    }
+    services
 }
 
 // --- Utilities ---
@@ -255,6 +341,36 @@ fn cmd_add(name: &str, dir: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn shared_overmind_running() -> bool {
+    config_dir().join(".overmind.sock").exists()
+}
+
+fn start_shared_overmind() -> bool {
+    let dir = config_dir();
+    if !dir.join("Procfile").exists() {
+        eprintln!("no Procfile in {}", dir.display());
+        return false;
+    }
+    match Command::new("overmind")
+        .args(["start", "-D"])
+        .current_dir(&dir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+    {
+        Ok(s) if s.success() => true,
+        Ok(s) => {
+            eprintln!("failed (exit {})", s.code().unwrap_or(-1));
+            false
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            false
+        }
+    }
+}
+
 fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
     let targets = match resolve_targets(services, name) {
         Some(t) => t,
@@ -267,16 +383,35 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
             eprintln!("{}: already running", svc.name);
             continue;
         }
-        if !svc.has_procfile() {
-            eprintln!("{}: no Procfile in {}", svc.name, svc.dir.display());
-            failed = true;
-            continue;
-        }
-        eprint!("{}: starting... ", svc.name);
-        if svc.run(&["start", "-D"]) {
-            eprintln!("ok");
+
+        if svc.is_command_based() {
+            if !shared_overmind_running() {
+                eprint!("{}: starting shared overmind... ", svc.name);
+                if start_shared_overmind() {
+                    eprintln!("ok");
+                } else {
+                    failed = true;
+                }
+            } else {
+                eprint!("{}: restarting... ", svc.name);
+                if svc.run(&["restart", &svc.name]) {
+                    eprintln!("ok");
+                } else {
+                    failed = true;
+                }
+            }
         } else {
-            failed = true;
+            if !svc.has_procfile() {
+                eprintln!("{}: no Procfile in {}", svc.name, svc.dir.display());
+                failed = true;
+                continue;
+            }
+            eprint!("{}: starting... ", svc.name);
+            if svc.run(&["start", "-D"]) {
+                eprintln!("ok");
+            } else {
+                failed = true;
+            }
         }
     }
 
@@ -296,11 +431,19 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
             continue;
         }
         eprint!("{}: stopping... ", svc.name);
-        if svc.run(&["quit"]) {
-            let _ = fs::remove_file(svc.socket_path());
-            eprintln!("ok");
+        if svc.is_command_based() {
+            if svc.run(&["kill", &svc.name]) {
+                eprintln!("ok");
+            } else {
+                failed = true;
+            }
         } else {
-            failed = true;
+            if svc.run(&["quit"]) {
+                let _ = fs::remove_file(svc.socket_path());
+                eprintln!("ok");
+            } else {
+                failed = true;
+            }
         }
     }
 
@@ -316,20 +459,28 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
     let mut failed = false;
     for svc in targets {
         eprint!("{}: reloading... ", svc.name);
-        if svc.is_running() {
-            let _ = svc.overmind(&["quit"]);
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let _ = fs::remove_file(svc.socket_path());
-        }
-        if !svc.has_procfile() {
-            eprintln!("no Procfile in {}", svc.dir.display());
-            failed = true;
-            continue;
-        }
-        if svc.run(&["start", "-D"]) {
-            eprintln!("ok");
+        if svc.is_command_based() {
+            if svc.run(&["restart", &svc.name]) {
+                eprintln!("ok");
+            } else {
+                failed = true;
+            }
         } else {
-            failed = true;
+            if svc.is_running() {
+                let _ = svc.overmind(&["quit"]);
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let _ = fs::remove_file(svc.socket_path());
+            }
+            if !svc.has_procfile() {
+                eprintln!("no Procfile in {}", svc.dir.display());
+                failed = true;
+                continue;
+            }
+            if svc.run(&["start", "-D"]) {
+                eprintln!("ok");
+            } else {
+                failed = true;
+            }
         }
     }
 
@@ -343,7 +494,11 @@ fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
         } else {
             "stopped"
         };
-        println!("{}\t{}\t{}", svc.name, state, svc.dir.display());
+        if let Some(cmd) = &svc.command {
+            println!("{}\t{}\t{}", svc.name, state, cmd);
+        } else {
+            println!("{}\t{}\t{}", svc.name, state, svc.dir.display());
+        }
     }
     ExitCode::SUCCESS
 }
@@ -364,6 +519,62 @@ fn cmd_passthrough(svc: &Service, args: &[String]) -> ExitCode {
     }
 }
 
+fn cmd_passthrough_all(
+    services: &BTreeMap<String, Service>,
+    cmd: &str,
+    name: Option<&str>,
+    extra: &[String],
+) -> ExitCode {
+    let targets = match resolve_targets(services, name) {
+        Some(t) => t,
+        None => return ExitCode::FAILURE,
+    };
+
+    let mut failed = false;
+    for svc in targets {
+        if !svc.is_running() {
+            eprintln!("{}: not running", svc.name);
+            continue;
+        }
+        let mut args = vec![cmd.to_string()];
+        args.extend(extra.iter().cloned());
+        let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        match svc.overmind(&str_args) {
+            Ok(s) if !s.success() => failed = true,
+            Err(e) => {
+                eprintln!("{}: {e}", svc.name);
+                failed = true;
+            }
+            _ => {}
+        }
+    }
+    exit_code(failed)
+}
+
+fn cmd_serve(args: &[String]) -> ExitCode {
+    let serve_bin = "ubermind-serve";
+    let extra: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    match Command::new(serve_bin)
+        .args(&extra)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+    {
+        Ok(s) if s.success() => ExitCode::SUCCESS,
+        Ok(s) => {
+            eprintln!("{serve_bin} exited with code {}", s.code().unwrap_or(-1));
+            ExitCode::FAILURE
+        }
+        Err(_) => {
+            eprintln!("{serve_bin} not found in PATH");
+            eprintln!("build it from ubermind/ui/src-tauri:");
+            eprintln!("  cargo build --release --bin serve");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 // --- CLI ---
 
 fn print_usage() {
@@ -375,20 +586,33 @@ fn print_usage() {
     eprintln!("  {BIN} start [name]        start service(s)");
     eprintln!("  {BIN} stop [name]         stop service(s)");
     eprintln!("  {BIN} reload [name]       restart service(s) (picks up Procfile changes)");
+    eprintln!("  {BIN} kill [name]         kill process(es) in service(s)");
+    eprintln!("  {BIN} restart [name]      restart process(es) in service(s)");
+    eprintln!("  {BIN} echo [name]         view logs from service(s)");
+    eprintln!("  {BIN} connect [name]      connect to a process in a service");
     eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
     eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
+    eprintln!("  {BIN} serve [-p PORT]     start web UI server (default port: 13369)");
     eprintln!("  {BIN} init                create config file");
     eprintln!("  {BIN} add <name> <dir>    add a service");
     eprintln!();
     eprintln!("examples:");
     eprintln!("  {BIN} start               start all services");
     eprintln!("  {BIN} start myapp         start just myapp");
+    eprintln!("  {BIN} kill                kill all processes in all services");
+    eprintln!("  {BIN} kill myapp          kill all processes in myapp");
+    eprintln!("  {BIN} echo                view logs from all services");
+    eprintln!("  {BIN} echo myapp          view logs from myapp");
     eprintln!("  {BIN} status myapp        show myapp's overmind process status");
-    eprintln!("  {BIN} echo myapp          view myapp's logs");
     eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
     eprintln!("  {BIN} connect web myapp   same thing, project name last");
     eprintln!();
-    eprintln!("config: {}", config_path().display());
+    eprintln!("config:");
+    eprintln!("  services: {}", config_path().display());
+    eprintln!("  Procfile: {}", config_dir().join("Procfile").display());
+    eprintln!();
+    eprintln!("services file defines directory-based services (name: ~/path/to/project)");
+    eprintln!("Procfile defines command-based services (name: command args)");
 }
 
 fn main() -> ExitCode {
@@ -437,6 +661,20 @@ fn main() -> ExitCode {
         "reload" => {
             let s = require_services();
             cmd_reload(&s, args.get(1).map(|s| s.as_str()))
+        }
+        "serve" | "ui" => cmd_serve(&args[1..]),
+        cmd if OVERMIND_COMMANDS.contains(&cmd) => {
+            let services = require_services();
+            let (name, extra) = if let Some(svc_name) = args.get(1) {
+                if services.contains_key(svc_name.as_str()) {
+                    (Some(svc_name.as_str()), args[2..].to_vec())
+                } else {
+                    (None, args[1..].to_vec())
+                }
+            } else {
+                (None, vec![])
+            };
+            cmd_passthrough_all(&services, cmd, name, &extra)
         }
         name => {
             let services = require_services();
