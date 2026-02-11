@@ -615,11 +615,39 @@ fn print_usage() {
     eprintln!("Procfile defines command-based services (name: command args)");
 }
 
+fn check_alias_hint() {
+    let arg0 = match env::args().next() {
+        Some(a) => PathBuf::from(a),
+        None => return,
+    };
+    if arg0.file_name().map(|n| n == "ub").unwrap_or(false) {
+        return;
+    }
+    let invoked_dir = if arg0.is_absolute() {
+        arg0.parent().map(|p| p.to_path_buf())
+    } else {
+        env::var_os("PATH")
+            .and_then(|paths| env::split_paths(&paths).find(|dir| dir.join(&arg0).exists()))
+    };
+    let dir = match invoked_dir {
+        Some(d) => d,
+        None => return,
+    };
+    if dir.join("ub").exists() {
+        return;
+    }
+    let exe = dir.join("ubermind");
+    eprintln!("tip: create a short alias with:");
+    eprintln!("  ln -s {} {}", exe.display(), dir.join("ub").display());
+    eprintln!();
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
 
     if args.is_empty() {
         print_usage();
+        check_alias_hint();
         return ExitCode::SUCCESS;
     }
 
