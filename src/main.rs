@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
@@ -551,6 +551,87 @@ fn cmd_passthrough_all(
     exit_code(failed)
 }
 
+fn strip_ansi(s: &str) -> String {
+    let mut result = String::new();
+    let mut in_escape = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn cmd_echo(
+    services: &BTreeMap<String, Service>,
+    name: Option<&str>,
+    filters: &[String],
+) -> ExitCode {
+    let targets = match resolve_targets(services, name) {
+        Some(t) => t,
+        None => return ExitCode::FAILURE,
+    };
+
+    if filters.is_empty() {
+        return cmd_passthrough_all(services, "echo", name, &[]);
+    }
+
+    let mut failed = false;
+
+    for svc in targets {
+        if !svc.is_running() {
+            eprintln!("{}: not running", svc.name);
+            continue;
+        }
+
+        let mut child = match Command::new("overmind")
+            .args(["echo"])
+            .current_dir(&svc.dir)
+            .env("CLICOLOR_FORCE", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{}: failed to start echo: {}", svc.name, e);
+                failed = true;
+                continue;
+            }
+        };
+
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                match line {
+                    Ok(l) => {
+                        let clean = strip_ansi(&l);
+                        if let Some((prefix, _)) = clean.split_once(" | ") {
+                            let prefix = prefix.trim();
+                            if filters.iter().any(|f| prefix == f) {
+                                println!("{}", l);
+                            }
+                        } else {
+                            println!("{}", l);
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+
+        let _ = child.wait();
+    }
+
+    exit_code(failed)
+}
+
 fn cmd_serve(args: &[String]) -> ExitCode {
     let serve_bin = "ubermind-serve";
     let extra: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -689,6 +770,19 @@ fn main() -> ExitCode {
         "reload" => {
             let s = require_services();
             cmd_reload(&s, args.get(1).map(|s| s.as_str()))
+        }
+        "echo" => {
+            let services = require_services();
+            let (name, filters) = if let Some(svc_name) = args.get(1) {
+                if services.contains_key(svc_name.as_str()) {
+                    (Some(svc_name.as_str()), args[2..].to_vec())
+                } else {
+                    (None, args[1..].to_vec())
+                }
+            } else {
+                (None, vec![])
+            };
+            cmd_echo(&services, name, &filters)
         }
         "serve" | "ui" => cmd_serve(&args[1..]),
         cmd if OVERMIND_COMMANDS.contains(&cmd) => {

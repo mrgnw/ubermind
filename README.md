@@ -82,3 +82,7 @@ Each project directory gets its own independent overmind instance with its own `
 ## License
 
 MIT
+
+## Extended Features
+
+See [extended_features/README.md](extended_features/README.md) for features added on top of standard overmind functionality.
