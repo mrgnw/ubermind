@@ -120,12 +120,8 @@
 
 	<div class="list">
 		<div class="title-row">
-			<span class="title-logo">
-				<img src={logoSvg} alt="" class="logo" />
-			</span>
+			<img src={logoSvg} alt="" class="logo" />
 			<span class="title-name">ubermind</span>
-			<span class="title-pad"></span>
-			<span class="title-pad"></span>
 		</div>
 
 		<div class="header-row">
@@ -207,17 +203,12 @@
 	}
 
 	.title-row {
-		display: grid;
-		grid-template-columns: subgrid;
 		grid-column: 1 / -1;
-		align-items: center;
-		padding: calc(28px * var(--scale, 1)) 0 calc(16px * var(--scale, 1));
-	}
-
-	.title-logo {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		gap: calc(14px * var(--scale, 1));
+		padding: calc(28px * var(--scale, 1)) 0 calc(16px * var(--scale, 1));
 	}
 
 	.logo {
@@ -232,10 +223,6 @@
 		font-weight: 700;
 		color: #444;
 		letter-spacing: 0.01em;
-	}
-
-	.title-pad {
-		display: block;
 	}
 
 	.header-row {
