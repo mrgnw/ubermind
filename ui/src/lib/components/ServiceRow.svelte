@@ -106,8 +106,8 @@
 	}
 
 	.check-cell input {
-		width: 15px;
-		height: 15px;
+		width: calc(18px * var(--scale, 1));
+		height: calc(18px * var(--scale, 1));
 		accent-color: #6366f1;
 		cursor: pointer;
 	}
@@ -130,13 +130,13 @@
 	}
 
 	.name {
-		font-size: var(--name-size, 1.15rem);
+		font-size: var(--name-size, 1.3rem);
 		font-weight: 600;
 		color: #e0e0e0;
 		text-decoration: none;
 		white-space: nowrap;
-		padding-left: 12px;
-		padding-right: 20px;
+		padding-left: calc(14px * var(--scale, 1));
+		padding-right: calc(24px * var(--scale, 1));
 	}
 
 	.name:hover {
@@ -144,14 +144,14 @@
 	}
 
 	.actions {
-		gap: var(--icon-gap, 10px);
+		gap: var(--icon-gap, 14px);
 		white-space: nowrap;
-		padding-right: 20px;
+		padding-right: calc(24px * var(--scale, 1));
 	}
 
 	.icon {
-		width: var(--icon-size, 22px);
-		height: var(--icon-size, 22px);
+		width: var(--icon-size, 28px);
+		height: var(--icon-size, 28px);
 		border: none;
 		background: none;
 		color: #555;
@@ -177,7 +177,7 @@
 	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	.path {
-		font-size: var(--path-size, 0.85rem);
+		font-size: var(--path-size, 0.95rem);
 		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 		white-space: nowrap;

@@ -12,7 +12,7 @@
 	let bulkMode = $state(false);
 	let bulkLoading = $state(false);
 
-	let scale = $derived(Math.max(0.85, Math.min(1.4, innerWidth / 900)));
+	let scale = $derived(Math.max(0.85, Math.min(1.6, innerWidth / 800)));
 	let hasSelection = $derived(selectedNames.size > 0);
 	let allSelected = $derived(services.length > 0 && selectedNames.size === services.length);
 	let runningCount = $derived(services.filter(s => s.running).length);
@@ -106,14 +106,18 @@
 <div
 	class="page"
 	style:--scale={scale}
-	style:--row-py="{Math.round(12 * scale)}px"
-	style:--row-px="{Math.round(16 * scale)}px"
-	style:--dot-size="{Math.round(14 * scale)}px"
-	style:--name-size="{1.1 * scale}rem"
-	style:--icon-size="{Math.round(22 * scale)}px"
-	style:--icon-gap="{Math.round(10 * scale)}px"
-	style:--path-size="{0.82 * scale}rem"
+	style:--row-py="{Math.round(16 * scale)}px"
+	style:--row-px="{Math.round(20 * scale)}px"
+	style:--dot-size="{Math.round(18 * scale)}px"
+	style:--name-size="{1.3 * scale}rem"
+	style:--icon-size="{Math.round(28 * scale)}px"
+	style:--icon-gap="{Math.round(14 * scale)}px"
+	style:--path-size="{0.95 * scale}rem"
 >
+	<div class="logo-banner">
+		<img src={logoSvg} alt="ubermind" class="logo" />
+	</div>
+
 	{#if error}
 		<div class="error">
 			{error}
@@ -146,30 +150,34 @@
 				<input type="checkbox" checked={allSelected} onchange={toggleAll} />
 			</label>
 		{/if}
-		<span class="logo-cell">
-			<img src={logoSvg} alt="" class="logo" />
+		<span class="header-dot-cell">
+			<button
+				class="select-btn"
+				class:active={bulkMode}
+				onclick={() => { bulkMode = !bulkMode; if (!bulkMode) selectedNames = new Set(); }}
+				title={bulkMode ? 'Done selecting' : 'Select services'}
+			>
+				{#if bulkMode}
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8.5l3.5 3.5 6.5-8" /></svg>
+				{:else}
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5" height="5" rx="1" /><path d="M3 4.5l1 1 2-2.5" /><rect x="9.5" y="1.5" width="5" height="5" rx="1" /><rect x="1.5" y="9.5" width="5" height="5" rx="1" /><rect x="9.5" y="9.5" width="5" height="5" rx="1" /></svg>
+				{/if}
+			</button>
 		</span>
 		<span class="header-name">ubermind</span>
 		<span class="header-actions">
 			{#if !bulkMode}
 				{#if stoppedCount > 0}
-					<button class="icon start" onclick={bulkStartAll} disabled={bulkLoading} title="Start all">
+					<button class="hicon start" onclick={bulkStartAll} disabled={bulkLoading} title="Start all">
 						<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
 					</button>
 				{/if}
 				{#if runningCount > 0}
-					<button class="icon stop" onclick={bulkStopAll} disabled={bulkLoading} title="Stop all">
+					<button class="hicon stop" onclick={bulkStopAll} disabled={bulkLoading} title="Stop all">
 						<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
 					</button>
 				{/if}
 			{/if}
-			<button class="icon select-toggle" onclick={() => { bulkMode = !bulkMode; if (!bulkMode) selectedNames = new Set(); }} title={bulkMode ? 'Done selecting' : 'Select'}>
-				{#if bulkMode}
-					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5l3 3 6-7" /></svg>
-				{:else}
-					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
-				{/if}
-			</button>
 		</span>
 		<span class="header-summary">
 			{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
@@ -192,43 +200,80 @@
 
 <style>
 	.page {
-		padding: calc(16px * var(--scale, 1)) calc(20px * var(--scale, 1));
+		padding: calc(12px * var(--scale, 1)) calc(24px * var(--scale, 1));
 		max-width: 1400px;
 		margin: 0 auto;
 	}
 
+	.logo-banner {
+		display: flex;
+		justify-content: center;
+		padding: calc(24px * var(--scale, 1)) 0 calc(16px * var(--scale, 1));
+	}
+
+	.logo {
+		width: calc(52px * var(--scale, 1));
+		height: calc(52px * var(--scale, 1));
+		opacity: 0.35;
+	}
+
 	.list {
 		display: grid;
-		grid-template-columns: 40px auto auto minmax(0, 1fr);
+		grid-template-columns: calc(56px * var(--scale, 1)) auto auto minmax(0, 1fr);
 		align-items: center;
 	}
 
 	.list.with-check {
-		grid-template-columns: 36px 40px auto auto minmax(0, 1fr);
+		grid-template-columns: calc(44px * var(--scale, 1)) calc(56px * var(--scale, 1)) auto auto minmax(0, 1fr);
 	}
 
-	.logo-cell {
+	.header-dot-cell {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: var(--row-py, 14px) 0;
-		padding-left: var(--row-px, 16px);
+		padding: calc(20px * var(--scale, 1)) 0;
+		padding-left: var(--row-px, 20px);
 		border-bottom: 1px solid #222238;
 	}
 
-	.logo {
-		width: calc(22px * var(--scale, 1));
-		height: calc(22px * var(--scale, 1));
-		opacity: 0.5;
+	.select-btn {
+		width: calc(26px * var(--scale, 1));
+		height: calc(26px * var(--scale, 1));
+		border: none;
+		background: none;
+		color: #444;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: color 0.15s;
+	}
+
+	.select-btn svg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.select-btn:hover {
+		color: #888;
+	}
+
+	.select-btn.active {
+		color: #6366f1;
+	}
+
+	.select-btn.active:hover {
+		color: #818cf8;
 	}
 
 	.header-name {
-		font-size: calc(1.2rem * var(--scale, 1));
+		font-size: calc(1.6rem * var(--scale, 1));
 		font-weight: 700;
-		color: #666;
-		padding: var(--row-py, 14px) 0;
-		padding-left: 12px;
-		padding-right: 20px;
+		color: #555;
+		padding: calc(20px * var(--scale, 1)) 0;
+		padding-left: calc(14px * var(--scale, 1));
+		padding-right: calc(24px * var(--scale, 1));
 		border-bottom: 1px solid #222238;
 		display: flex;
 		align-items: center;
@@ -237,18 +282,18 @@
 	.header-actions {
 		display: flex;
 		align-items: center;
-		gap: var(--icon-gap, 10px);
-		padding: var(--row-py, 14px) 0;
-		padding-right: 20px;
+		gap: calc(16px * var(--scale, 1));
+		padding: calc(20px * var(--scale, 1)) 0;
+		padding-right: calc(24px * var(--scale, 1));
 		border-bottom: 1px solid #222238;
 	}
 
 	.header-summary {
-		font-size: var(--path-size, 0.82rem);
+		font-size: calc(1rem * var(--scale, 1));
 		color: #3a3a4a;
 		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-		padding: var(--row-py, 14px) 0;
-		padding-right: var(--row-px, 16px);
+		padding: calc(20px * var(--scale, 1)) 0;
+		padding-right: var(--row-px, 20px);
 		border-bottom: 1px solid #222238;
 		display: flex;
 		align-items: center;
@@ -258,22 +303,22 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: var(--row-py, 14px) 0;
-		padding-left: var(--row-px, 16px);
+		padding: calc(20px * var(--scale, 1)) 0;
+		padding-left: var(--row-px, 20px);
 		border-bottom: 1px solid #222238;
 		cursor: pointer;
 	}
 
 	.header-check input {
-		width: 15px;
-		height: 15px;
+		width: calc(18px * var(--scale, 1));
+		height: calc(18px * var(--scale, 1));
 		accent-color: #6366f1;
 		cursor: pointer;
 	}
 
-	.icon {
-		width: var(--icon-size, 22px);
-		height: var(--icon-size, 22px);
+	.hicon {
+		width: calc(32px * var(--scale, 1));
+		height: calc(32px * var(--scale, 1));
 		border: none;
 		background: none;
 		color: #555;
@@ -285,35 +330,34 @@
 		transition: color 0.15s;
 	}
 
-	.icon svg {
+	.hicon svg {
 		width: 100%;
 		height: 100%;
 	}
 
-	.icon:hover { color: #ccc; }
-	.icon.start:hover { color: #55cc55; }
-	.icon.stop:hover { color: #dd6666; }
-	.icon.select-toggle:hover { color: #aaa; }
-	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
+	.hicon:hover { color: #ccc; }
+	.hicon.start:hover { color: #55cc55; }
+	.hicon.stop:hover { color: #dd6666; }
+	.hicon:disabled { opacity: 0.25; cursor: not-allowed; }
 
 	.bulk-bar {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 8px 16px;
+		gap: calc(14px * var(--scale, 1));
+		padding: calc(12px * var(--scale, 1)) calc(24px * var(--scale, 1));
 		margin-bottom: 4px;
 		border-bottom: 1px solid #1a1a2a;
 	}
 
 	.bulk-count {
-		font-size: 0.82rem;
+		font-size: calc(1rem * var(--scale, 1));
 		color: #666;
 		margin-right: auto;
 	}
 
 	.bulk-icon {
-		width: var(--icon-size, 22px);
-		height: var(--icon-size, 22px);
+		width: calc(28px * var(--scale, 1));
+		height: calc(28px * var(--scale, 1));
 		border: none;
 		background: none;
 		color: #555;
@@ -338,10 +382,10 @@
 
 	@media (max-width: 500px) {
 		.list {
-			grid-template-columns: 40px auto auto;
+			grid-template-columns: calc(56px * var(--scale, 1)) auto auto;
 		}
 		.list.with-check {
-			grid-template-columns: 36px 40px auto auto;
+			grid-template-columns: calc(44px * var(--scale, 1)) calc(56px * var(--scale, 1)) auto auto;
 		}
 		.header-summary {
 			display: none !important;
@@ -355,12 +399,12 @@
 		padding: 12px 16px;
 		margin-bottom: 16px;
 		color: #cc6666;
-		font-size: 0.9rem;
+		font-size: calc(1rem * var(--scale, 1));
 	}
 
 	.error p {
 		margin: 6px 0 0;
-		font-size: 0.8rem;
+		font-size: calc(0.9rem * var(--scale, 1));
 		color: #888;
 	}
 
@@ -368,12 +412,13 @@
 		color: #555;
 		text-align: center;
 		margin-top: 48px;
+		font-size: calc(1rem * var(--scale, 1));
 	}
 
 	code {
 		background: #1a1a2e;
 		padding: 2px 6px;
 		border-radius: 3px;
-		font-size: 0.85rem;
+		font-size: calc(0.95rem * var(--scale, 1));
 	}
 </style>
