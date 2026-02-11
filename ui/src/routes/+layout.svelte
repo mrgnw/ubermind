@@ -9,12 +9,15 @@
 {@render children()}
 
 <style>
-	:global(body) {
+	:global(html, body) {
 		margin: 0;
 		padding: 0;
-		background: #0f0f1a;
+		background: #0e0e1a;
 		color: #e0e0e0;
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+		font-size: 15px;
+		line-height: 1.5;
+		-webkit-font-smoothing: antialiased;
 	}
 
 	:global(*) {

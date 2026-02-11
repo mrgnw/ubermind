@@ -18,8 +18,21 @@
 	let error = $state('');
 	let loading = $state(false);
 	let wsUrl = $state('');
+	let innerWidth = $state(800);
 
 	let name = $derived(page.params.name!);
+	let scale = $derived(Math.max(0.85, Math.min(1.4, innerWidth / 900)));
+
+	function shortenPath(dir: string): string {
+		const home = '/Users/';
+		if (dir.startsWith(home)) {
+			const rest = dir.slice(home.length);
+			const slash = rest.indexOf('/');
+			if (slash !== -1) return '~' + rest.slice(slash);
+			return '~';
+		}
+		return dir;
+	}
 
 	async function refresh() {
 		try {
@@ -58,14 +71,33 @@
 	});
 </script>
 
-<div class="service-page">
+<svelte:window bind:innerWidth />
+
+<div class="page" style:--scale={scale}>
 	<header>
-		<a href="/" class="back">← services</a>
+		<a href="/" class="back" title="Back to services">
+			<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 3L5 8l5 5" /></svg>
+		</a>
+		<span class="dot" class:running={detail?.running ?? false}>
+			<span class="dot-inner"></span>
+		</span>
 		<h1>{name}</h1>
 		{#if detail}
-			<span class="status" class:running={detail.running}>
-				{detail.running ? 'running' : 'stopped'}
+			<span class="actions">
+				{#if detail.running}
+					<button class="action-btn stop" onclick={() => handleAction('stop')} disabled={loading} title="Stop">
+						<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+					</button>
+					<button class="action-btn reload" onclick={() => handleAction('reload')} disabled={loading} title="Reload">
+						<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
+					</button>
+				{:else}
+					<button class="action-btn start" onclick={() => handleAction('start')} disabled={loading} title="Start">
+						<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
+					</button>
+				{/if}
 			</span>
+			<span class="path">{shortenPath(detail.dir)}</span>
 		{/if}
 	</header>
 
@@ -74,44 +106,25 @@
 	{/if}
 
 	{#if detail}
-		<div class="info">
-			<span class="dir">{detail.dir}</span>
-			<div class="actions">
-				{#if detail.running}
-					<button onclick={() => handleAction('stop')} disabled={loading}>stop</button>
-					<button onclick={() => handleAction('reload')} disabled={loading}>reload</button>
-				{:else}
-					<button onclick={() => handleAction('start')} disabled={loading}>start</button>
-				{/if}
-			</div>
-		</div>
-
 		{#if detail.processes.length > 0}
-			<div class="processes">
+			<section>
 				<h2>processes</h2>
-				<table>
-					<thead>
-						<tr>
-							<th>name</th>
-							<th>pid</th>
-							<th>status</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each detail.processes as proc}
-							<tr>
-								<td>{proc.name}</td>
-								<td class="mono">{proc.pid ?? '-'}</td>
-								<td>{proc.status}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+				<div class="proc-list">
+					{#each detail.processes as proc}
+						<div class="proc-row">
+							<span class="proc-dot" class:running={proc.status === 'running'}>
+								<span class="proc-dot-inner"></span>
+							</span>
+							<span class="proc-name">{proc.name}</span>
+							<span class="proc-pid">{proc.pid ?? '-'}</span>
+						</div>
+					{/each}
+				</div>
+			</section>
 		{/if}
 
 		{#if panes.length > 0}
-			<div class="panes-info">
+			<section>
 				<h2>tmux panes</h2>
 				<div class="pane-list">
 					{#each panes as pane}
@@ -120,80 +133,103 @@
 						</span>
 					{/each}
 				</div>
-			</div>
+			</section>
 		{/if}
 
 		{#if detail.running && wsUrl}
-			<div class="terminal-section">
+			<section class="terminal-section">
 				<h2>echo</h2>
-				<Terminal {wsUrl} />
-			</div>
+				<div class="terminal-container">
+					<Terminal {wsUrl} />
+				</div>
+			</section>
 		{/if}
 	{/if}
 </div>
 
 <style>
-	.service-page {
-		max-width: 1100px;
+	.page {
+		padding: calc(16px * var(--scale, 1)) calc(20px * var(--scale, 1));
+		max-width: 1400px;
 		margin: 0 auto;
-		padding: 24px;
 	}
 
 	header {
 		display: flex;
 		align-items: center;
-		gap: 16px;
-		margin-bottom: 20px;
+		gap: calc(12px * var(--scale, 1));
+		margin-bottom: calc(24px * var(--scale, 1));
+		flex-wrap: wrap;
 	}
 
 	.back {
-		color: #888;
+		color: #555;
 		text-decoration: none;
-		font-size: 0.9rem;
+		padding: 6px;
+		border-radius: 6px;
+		display: flex;
+		align-items: center;
+		transition: all 0.15s;
+	}
+
+	.back svg {
+		width: calc(18px * var(--scale, 1));
+		height: calc(18px * var(--scale, 1));
 	}
 
 	.back:hover {
 		color: #ccc;
+		background: #1a1a2e;
+	}
+
+	.dot {
+		width: calc(16px * var(--scale, 1));
+		height: calc(16px * var(--scale, 1));
+		border-radius: 50%;
+		background: radial-gradient(circle at 35% 35%, #ee5555, #aa2222);
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 1px 3px #00000044;
+	}
+
+	.dot.running {
+		background: radial-gradient(circle at 35% 35%, #55ee55, #22aa22);
+		box-shadow: 0 0 8px #44bb4455, 0 1px 3px #00000044;
+		animation: pulse 3s ease-in-out infinite;
+	}
+
+	.dot-inner {
+		width: 35%;
+		height: 35%;
+		border-radius: 50%;
+		background: radial-gradient(circle, #ffffff88, transparent);
+	}
+
+	@keyframes pulse {
+		0%, 100% { box-shadow: 0 0 6px #44bb4433, 0 1px 3px #00000044; }
+		50% { box-shadow: 0 0 14px #44bb4466, 0 1px 3px #00000044; }
 	}
 
 	h1 {
-		font-size: 1.5rem;
+		font-size: calc(1.3rem * var(--scale, 1));
 		font-weight: 700;
 		color: #e0e0e0;
 		margin: 0;
 	}
 
 	h2 {
-		font-size: 1rem;
-		font-weight: 600;
-		color: #aaa;
-		margin: 0 0 12px;
+		font-size: calc(0.8rem * var(--scale, 1));
+		font-weight: 500;
+		color: #555;
+		margin: 0 0 calc(8px * var(--scale, 1));
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
 	}
 
-	.status {
-		font-size: 0.85rem;
-		padding: 2px 8px;
-		border-radius: 4px;
-		background: #4a1a1a;
-		color: #ff6b6b;
-	}
-
-	.status.running {
-		background: #1a4a1a;
-		color: #6bff6b;
-	}
-
-	.info {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 24px;
-	}
-
-	.dir {
-		font-size: 0.85rem;
-		color: #888;
-		font-family: monospace;
+	section {
+		margin-bottom: calc(24px * var(--scale, 1));
 	}
 
 	.actions {
@@ -201,90 +237,123 @@
 		gap: 8px;
 	}
 
-	button {
-		padding: 4px 12px;
-		border: 1px solid #444;
-		border-radius: 4px;
-		background: #2a2a3e;
-		color: #ccc;
+	.action-btn {
+		width: calc(34px * var(--scale, 1));
+		height: calc(34px * var(--scale, 1));
+		border: 1px solid #2a2a3e;
+		border-radius: 6px;
+		background: #1c1c30;
+		color: #777;
 		cursor: pointer;
-		font-size: 0.85rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: all 0.15s;
 	}
 
-	button:hover {
-		background: #3a3a4e;
-		border-color: #666;
+	.action-btn svg {
+		width: 55%;
+		height: 55%;
 	}
 
-	button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	.action-btn:hover { border-color: #444; color: #ccc; background: #252540; }
+	.action-btn.start:hover { border-color: #2d5a2d; color: #6bdd6b; background: #1a2e1a; }
+	.action-btn.stop:hover { border-color: #5a2d2d; color: #dd6b6b; background: #2e1a1a; }
+	.action-btn.reload:hover { border-color: #3d3d6a; color: #8888dd; background: #1e1e3a; }
+	.action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+	.path {
+		font-size: calc(0.8rem * var(--scale, 1));
+		color: #444;
+		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+		margin-left: auto;
 	}
 
 	.error {
-		background: #4a1a1a;
-		border: 1px solid #ff6b6b;
-		border-radius: 8px;
-		padding: 16px;
+		background: #2a1010;
+		border: 1px solid #552222;
+		border-radius: 6px;
+		padding: 12px 16px;
 		margin-bottom: 16px;
-		color: #ff6b6b;
+		color: #cc6666;
+		font-size: 0.9rem;
 	}
 
-	.processes {
-		margin-bottom: 24px;
+	.proc-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
-	table {
-		width: 100%;
-		border-collapse: collapse;
+	.proc-row {
+		display: flex;
+		align-items: center;
+		gap: calc(10px * var(--scale, 1));
+		padding: calc(6px * var(--scale, 1)) 0;
+		border-bottom: 1px solid #1a1a28;
 	}
 
-	th, td {
-		text-align: left;
-		padding: 6px 12px;
-		border-bottom: 1px solid #333;
+	.proc-dot {
+		width: calc(9px * var(--scale, 1));
+		height: calc(9px * var(--scale, 1));
+		border-radius: 50%;
+		background: radial-gradient(circle at 35% 35%, #ee5555, #aa2222);
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 1px 2px #00000033;
 	}
 
-	th {
-		color: #888;
+	.proc-dot.running {
+		background: radial-gradient(circle at 35% 35%, #55ee55, #22aa22);
+	}
+
+	.proc-dot-inner {
+		width: 30%;
+		height: 30%;
+		border-radius: 50%;
+		background: radial-gradient(circle, #ffffff66, transparent);
+	}
+
+	.proc-name {
 		font-weight: 500;
-		font-size: 0.85rem;
-	}
-
-	td {
 		color: #ccc;
+		min-width: 80px;
+		font-size: calc(1rem * var(--scale, 1));
 	}
 
-	.mono {
-		font-family: monospace;
-	}
-
-	.panes-info {
-		margin-bottom: 24px;
+	.proc-pid {
+		font-size: calc(0.8rem * var(--scale, 1));
+		color: #555;
+		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 	}
 
 	.pane-list {
 		display: flex;
-		gap: 8px;
+		gap: 6px;
 		flex-wrap: wrap;
 	}
 
 	.pane-tag {
-		background: #2a2a3e;
-		padding: 4px 10px;
-		border-radius: 4px;
-		font-size: 0.8rem;
-		color: #aaa;
-		font-family: monospace;
+		background: #161628;
+		padding: 3px 8px;
+		border-radius: 3px;
+		font-size: calc(0.75rem * var(--scale, 1));
+		color: #666;
+		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
 	}
 
 	.terminal-section {
-		height: 500px;
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 
-	.terminal-section h2 {
-		flex-shrink: 0;
+	.terminal-container {
+		flex: 1;
+		height: calc(100vh - 280px);
+		min-height: 250px;
 	}
 </style>
