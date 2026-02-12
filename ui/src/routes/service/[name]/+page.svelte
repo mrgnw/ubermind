@@ -3,18 +3,15 @@
 	import { page } from '$app/state';
 	import {
 		getServiceDetail,
-		getPanes,
 		startService,
 		stopService,
 		reloadService,
 		echoWebSocketUrl,
 		type ServiceDetail,
-		type TmuxPane,
 	} from '$lib/api';
 	import Terminal from '$lib/components/Terminal.svelte';
 
 	let detail = $state<ServiceDetail | null>(null);
-	let panes = $state<TmuxPane[]>([]);
 	let error = $state('');
 	let loading = $state(false);
 	let wsUrl = $state('');
@@ -23,25 +20,12 @@
 	let name = $derived(page.params.name!);
 	let scale = $derived(Math.max(0.85, Math.min(1.4, innerWidth / 900)));
 
-	function shortenPath(dir: string): string {
-		const home = '/Users/';
-		if (dir.startsWith(home)) {
-			const rest = dir.slice(home.length);
-			const slash = rest.indexOf('/');
-			if (slash !== -1) return '~' + rest.slice(slash);
-			return '~';
-		}
-		return dir;
-	}
-
 	async function refresh() {
 		try {
 			detail = await getServiceDetail(name);
 			if (detail.running) {
-				panes = await getPanes(name);
 				wsUrl = echoWebSocketUrl(name);
 			} else {
-				panes = [];
 				wsUrl = '';
 			}
 			error = '';
@@ -56,7 +40,7 @@
 			if (action === 'start') await startService(name);
 			else if (action === 'stop') await stopService(name);
 			else await reloadService(name);
-			setTimeout(refresh, 1000);
+			setTimeout(refresh, 300);
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -76,7 +60,7 @@
 <div
 	class="page"
 	style:--scale={scale}
-	style:--icon-size="{Math.round(22 * scale)}px"
+	style:--icon-size="{Math.round(24 * scale)}px"
 >
 	<header>
 		<a href="/" class="back" title="Back to services">
@@ -99,7 +83,6 @@
 					</button>
 				{/if}
 			</span>
-			<span class="path">{shortenPath(detail.dir)}</span>
 		{/if}
 	</header>
 
@@ -108,58 +91,41 @@
 	{/if}
 
 	{#if detail}
-		{#if detail.processes.length > 0}
-			<section>
-				<h2>processes</h2>
-				<div class="proc-list">
-					{#each detail.processes as proc}
-						<div class="proc-row">
-							<span class="proc-dot" class:running={proc.status === 'running'}></span>
-							<span class="proc-name">{proc.name}</span>
-							<span class="proc-pid">{proc.pid ?? '-'}</span>
-						</div>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
-		{#if panes.length > 0}
-			<section>
-				<h2>tmux panes</h2>
-				<div class="pane-list">
-					{#each panes as pane}
-						<span class="pane-tag">
-							{pane.session}:{pane.window}.{pane.pane} ({pane.command})
-						</span>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
 		{#if detail.running && wsUrl}
-			<section class="terminal-section">
-				<h2>echo</h2>
-				<div class="terminal-container">
-					<Terminal {wsUrl} />
-				</div>
-			</section>
+			<div class="terminal-fill">
+				<Terminal {wsUrl} />
+			</div>
+		{:else if !detail.running}
+			<div class="stopped-state">
+				<span class="stopped-dot"></span>
+				<span class="stopped-label">stopped</span>
+				<button class="start-btn" onclick={() => handleAction('start')} disabled={loading}>
+					<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
+					Start
+				</button>
+			</div>
 		{/if}
 	{/if}
 </div>
 
 <style>
 	.page {
-		padding: calc(16px * var(--scale, 1)) calc(20px * var(--scale, 1));
+		padding: calc(12px * var(--scale, 1)) calc(20px * var(--scale, 1));
 		max-width: 1400px;
 		margin: 0 auto;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	header {
 		display: flex;
 		align-items: center;
 		gap: calc(12px * var(--scale, 1));
-		margin-bottom: calc(24px * var(--scale, 1));
-		flex-wrap: wrap;
+		padding-bottom: calc(12px * var(--scale, 1));
+		border-bottom: 1px solid #222238;
+		flex-shrink: 0;
 	}
 
 	.back {
@@ -172,8 +138,8 @@
 	}
 
 	.back svg {
-		width: var(--icon-size, 22px);
-		height: var(--icon-size, 22px);
+		width: var(--icon-size, 24px);
+		height: var(--icon-size, 24px);
 	}
 
 	.back:hover {
@@ -181,8 +147,8 @@
 	}
 
 	.dot {
-		width: calc(14px * var(--scale, 1));
-		height: calc(14px * var(--scale, 1));
+		width: calc(16px * var(--scale, 1));
+		height: calc(16px * var(--scale, 1));
 		border-radius: 50%;
 		background: #cc4444;
 		flex-shrink: 0;
@@ -199,27 +165,15 @@
 		margin: 0;
 	}
 
-	h2 {
-		font-size: calc(0.8rem * var(--scale, 1));
-		font-weight: 500;
-		color: #555;
-		margin: 0 0 calc(8px * var(--scale, 1));
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-
-	section {
-		margin-bottom: calc(24px * var(--scale, 1));
-	}
-
 	.actions {
 		display: flex;
-		gap: calc(10px * var(--scale, 1));
+		gap: calc(12px * var(--scale, 1));
+		margin-left: auto;
 	}
 
 	.icon {
-		width: var(--icon-size, 22px);
-		height: var(--icon-size, 22px);
+		width: var(--icon-size, 24px);
+		height: var(--icon-size, 24px);
 		border: none;
 		background: none;
 		color: #555;
@@ -242,86 +196,72 @@
 	.icon.reload:hover { color: #7777cc; }
 	.icon:disabled { opacity: 0.25; cursor: not-allowed; }
 
-	.path {
-		font-size: calc(0.8rem * var(--scale, 1));
-		color: #3a3a4a;
-		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-		margin-left: auto;
-	}
-
 	.error {
 		background: #2a1010;
 		border: 1px solid #552222;
 		border-radius: 6px;
 		padding: 12px 16px;
-		margin-bottom: 16px;
+		margin-top: calc(12px * var(--scale, 1));
 		color: #cc6666;
 		font-size: 0.9rem;
-	}
-
-	.proc-list {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.proc-row {
-		display: flex;
-		align-items: center;
-		gap: calc(10px * var(--scale, 1));
-		padding: calc(6px * var(--scale, 1)) 0;
-		border-bottom: 1px solid #1a1a28;
-	}
-
-	.proc-dot {
-		width: calc(9px * var(--scale, 1));
-		height: calc(9px * var(--scale, 1));
-		border-radius: 50%;
-		background: #cc4444;
 		flex-shrink: 0;
 	}
 
-	.proc-dot.running {
-		background: #44bb44;
+	.terminal-fill {
+		flex: 1;
+		min-height: 0;
+		margin-top: calc(12px * var(--scale, 1));
 	}
 
-	.proc-name {
-		font-weight: 500;
-		color: #ccc;
-		min-width: 80px;
-		font-size: calc(1rem * var(--scale, 1));
-	}
-
-	.proc-pid {
-		font-size: calc(0.8rem * var(--scale, 1));
-		color: #555;
-		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-	}
-
-	.pane-list {
-		display: flex;
-		gap: 6px;
-		flex-wrap: wrap;
-	}
-
-	.pane-tag {
-		background: #161628;
-		padding: 3px 8px;
-		border-radius: 3px;
-		font-size: calc(0.75rem * var(--scale, 1));
-		color: #666;
-		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-	}
-
-	.terminal-section {
+	.stopped-state {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
+		align-items: center;
+		justify-content: center;
+		gap: calc(16px * var(--scale, 1));
 	}
 
-	.terminal-container {
-		flex: 1;
-		height: calc(100vh - 280px);
-		min-height: 250px;
+	.stopped-dot {
+		width: calc(48px * var(--scale, 1));
+		height: calc(48px * var(--scale, 1));
+		border-radius: 50%;
+		background: #cc4444;
+	}
+
+	.stopped-label {
+		font-size: calc(1.2rem * var(--scale, 1));
+		color: #555;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+	}
+
+	.start-btn {
+		display: flex;
+		align-items: center;
+		gap: calc(8px * var(--scale, 1));
+		padding: calc(12px * var(--scale, 1)) calc(24px * var(--scale, 1));
+		background: none;
+		border: 1px solid #333;
+		border-radius: 6px;
+		color: #888;
+		font-size: calc(1rem * var(--scale, 1));
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.start-btn svg {
+		width: calc(20px * var(--scale, 1));
+		height: calc(20px * var(--scale, 1));
+	}
+
+	.start-btn:hover {
+		color: #55cc55;
+		border-color: #55cc55;
+	}
+
+	.start-btn:disabled {
+		opacity: 0.25;
+		cursor: not-allowed;
 	}
 </style>
