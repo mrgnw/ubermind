@@ -18,6 +18,8 @@
 		font-size: 15px;
 		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
+		height: 100%;
+		overflow: hidden;
 	}
 
 	:global(*) {

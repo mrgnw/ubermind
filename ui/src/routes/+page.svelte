@@ -194,12 +194,21 @@
 		padding: calc(12px * var(--scale, 1)) calc(28px * var(--scale, 1));
 		max-width: 1400px;
 		margin: 0 auto;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	.list {
 		display: grid;
 		grid-template-columns: calc(60px * var(--scale, 1)) auto auto 1fr;
+		grid-template-rows: auto auto;
+		grid-auto-rows: 1fr;
 		align-items: center;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.title-row {
