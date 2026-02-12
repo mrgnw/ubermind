@@ -98,9 +98,55 @@
 		refreshTimer = setInterval(refresh, 5000);
 		return () => clearInterval(refreshTimer);
 	});
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		const tag = (e.target as HTMLElement)?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+		switch (e.key) {
+			case 'a':
+				e.preventDefault();
+				headerCheckClicked();
+				break;
+			case 's':
+				e.preventDefault();
+				if (hasSelection) {
+					if (selectedStopped > 0) bulkAction('start');
+				} else if (stoppedCount > 0) {
+					actionAll('start');
+				}
+				break;
+			case 'x':
+				e.preventDefault();
+				if (hasSelection) {
+					if (selectedRunning > 0) bulkAction('stop');
+				} else if (runningCount > 0) {
+					actionAll('stop');
+				}
+				break;
+			case 'r':
+				e.preventDefault();
+				if (hasSelection && selectedRunning > 0) bulkAction('reload');
+				break;
+			case 'Escape':
+				e.preventDefault();
+				selectedNames = new Set();
+				queueMicrotask(syncIndeterminate);
+				break;
+			default:
+				if (e.key >= '1' && e.key <= '9') {
+					const idx = parseInt(e.key) - 1;
+					if (idx < services.length) {
+						e.preventDefault();
+						toggleSelect(services[idx].name, !selectedNames.has(services[idx].name));
+					}
+				}
+		}
+	}
 </script>
 
-<svelte:window bind:innerWidth />
+<svelte:window bind:innerWidth onkeydown={handleKeydown} />
 
 <div
 	class="page"

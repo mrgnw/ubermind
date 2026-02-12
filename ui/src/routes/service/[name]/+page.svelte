@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
 		getServiceDetail,
@@ -53,9 +54,38 @@
 		const timer = setInterval(refresh, 10000);
 		return () => clearInterval(timer);
 	});
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+		switch (e.key) {
+			case 'Escape':
+				e.preventDefault();
+				goto('/');
+				break;
+			case 's':
+				if (detail && !detail.running && !loading) {
+					e.preventDefault();
+					handleAction('start');
+				}
+				break;
+			case 'x':
+				if (detail?.running && !loading) {
+					e.preventDefault();
+					handleAction('stop');
+				}
+				break;
+			case 'r':
+				if (detail?.running && !loading) {
+					e.preventDefault();
+					handleAction('reload');
+				}
+				break;
+		}
+	}
 </script>
 
-<svelte:window bind:innerWidth />
+<svelte:window bind:innerWidth onkeydown={handleKeydown} />
 
 <div
 	class="page"
