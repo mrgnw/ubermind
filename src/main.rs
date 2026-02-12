@@ -344,11 +344,25 @@ fn require_services() -> BTreeMap<String, Service> {
     check_overmind();
     let services = load_services();
     if services.is_empty() {
-        eprintln!("no services configured");
-        eprintln!(
-            "run '{BIN} init' to create {}",
-            config_dir().join("services").display()
-        );
+        let path = config_dir().join("services");
+        if path.exists() {
+            eprintln!("no services configured");
+            eprintln!();
+            eprintln!("add a project:");
+            eprintln!("  {BIN} add myapp ~/dev/myapp");
+            eprintln!();
+            eprintln!("or edit the config directly:");
+            eprintln!("  {}", path.display());
+            eprintln!();
+            eprintln!("each project directory needs a Procfile with processes to run:");
+            eprintln!("  web: npm run dev");
+            eprintln!("  api: python server.py");
+        } else {
+            eprintln!("no services configured");
+            eprintln!("run '{BIN} init' to get started");
+        }
+        eprintln!();
+        eprintln!("docs: https://github.com/mrgnw/ubermind#quick-start");
         std::process::exit(1);
     }
     services
@@ -469,7 +483,24 @@ fn cmd_init() -> ExitCode {
     match fs::write(&path, content) {
         Ok(_) => {
             eprintln!("created {}", path.display());
-            eprintln!("add services with '{BIN} add <name> <dir>' or edit the file directly");
+            eprintln!();
+            eprintln!("getting started:");
+            eprintln!();
+            eprintln!("  1. add a project that has a Procfile:");
+            eprintln!("     {BIN} add myapp ~/dev/myapp");
+            eprintln!();
+            eprintln!("  2. if your project doesn't have a Procfile yet, create one:");
+            eprintln!("     echo 'web: npm run dev' > ~/dev/myapp/Procfile");
+            eprintln!();
+            eprintln!("     a Procfile lists the processes to run (one per line):");
+            eprintln!("       web: npm run dev");
+            eprintln!("       api: python server.py");
+            eprintln!("       worker: ruby worker.rb");
+            eprintln!();
+            eprintln!("  3. start your services:");
+            eprintln!("     {BIN} start");
+            eprintln!();
+            eprintln!("docs: https://github.com/mrgnw/ubermind#quick-start");
             ExitCode::SUCCESS
         }
         Err(e) => {
