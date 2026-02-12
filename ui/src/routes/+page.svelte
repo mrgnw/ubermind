@@ -216,19 +216,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: calc(14px * var(--scale, 1));
-		padding: calc(28px * var(--scale, 1)) 0 calc(16px * var(--scale, 1));
+		gap: calc(10px * var(--scale, 1));
+		padding: calc(10px * var(--scale, 1)) 0 calc(8px * var(--scale, 1));
 	}
 
 	.logo {
-		width: calc(44px * var(--scale, 1));
-		height: calc(44px * var(--scale, 1));
+		width: calc(36px * var(--scale, 1));
+		height: calc(36px * var(--scale, 1));
 		opacity: 0.5;
 		filter: brightness(0) invert(1);
 	}
 
 	.title-name {
-		font-size: calc(2rem * var(--scale, 1));
+		font-size: calc(1.5rem * var(--scale, 1));
 		font-weight: 700;
 		color: #444;
 		letter-spacing: 0.01em;
