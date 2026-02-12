@@ -89,7 +89,7 @@
 	}
 
 	.row:hover {
-		background: #12122066;
+		background: #1a1a3088;
 	}
 
 	.dot-cell {
