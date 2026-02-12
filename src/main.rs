@@ -89,6 +89,20 @@ impl Service {
             }
         }
     }
+
+    fn run_quiet(&self, args: &[&str]) -> bool {
+        let result = Command::new("overmind")
+            .args(args)
+            .current_dir(&self.dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        match result {
+            Ok(s) => s.success(),
+            Err(_) => false,
+        }
+    }
 }
 
 // --- Config ---
@@ -268,6 +282,74 @@ fn resolve_targets<'a>(
     }
 }
 
+fn get_process_status(svc: &Service, process_name: &str) -> Option<String> {
+    let output = Command::new("overmind")
+        .args(["status"])
+        .current_dir(&svc.dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 && parts[0] == process_name {
+            return Some(parts[1].to_string());
+        }
+    }
+    None
+}
+
+fn await_process_status(
+    svc: &Service,
+    process_name: &str,
+    want_running: bool,
+    max_secs: u8,
+) -> bool {
+    for _ in 0..max_secs {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        eprint!(".");
+        std::io::stderr().flush().ok();
+
+        if let Some(status) = get_process_status(svc, process_name) {
+            let is_running = status != "exited" && status != "stopped";
+            if is_running == want_running {
+                return true;
+            }
+        } else if !want_running {
+            return true;
+        }
+    }
+    false
+}
+
+fn await_socket_gone(socket_path: &PathBuf, max_secs: u8) -> bool {
+    for _ in 0..max_secs {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        eprint!(".");
+        std::io::stderr().flush().ok();
+
+        if !socket_path.exists() {
+            return true;
+        }
+    }
+    false
+}
+
+fn await_socket_exists(socket_path: &PathBuf, max_secs: u8) -> bool {
+    for _ in 0..max_secs {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        eprint!(".");
+        std::io::stderr().flush().ok();
+
+        if socket_path.exists() {
+            return true;
+        }
+    }
+    false
+}
+
 // --- Commands ---
 
 fn cmd_init() -> ExitCode {
@@ -386,17 +468,29 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
 
         if svc.is_command_based() {
             if !shared_overmind_running() {
-                eprint!("{}: starting shared overmind... ", svc.name);
-                if start_shared_overmind() {
-                    eprintln!("ok");
+                eprint!("{}: starting", svc.name);
+                if !start_shared_overmind() {
+                    eprintln!(" failed");
+                    failed = true;
+                    continue;
+                }
+                if await_process_status(svc, &svc.name, true, 5) {
+                    eprintln!(" running");
                 } else {
+                    eprintln!(" failed");
                     failed = true;
                 }
             } else {
-                eprint!("{}: restarting... ", svc.name);
-                if svc.run(&["restart", &svc.name]) {
-                    eprintln!("ok");
+                eprint!("{}: restart", svc.name);
+                if !svc.run(&["restart", &svc.name]) {
+                    eprintln!(" failed");
+                    failed = true;
+                    continue;
+                }
+                if await_process_status(svc, &svc.name, true, 5) {
+                    eprintln!(" running");
                 } else {
+                    eprintln!(" failed");
                     failed = true;
                 }
             }
@@ -406,10 +500,16 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
                 failed = true;
                 continue;
             }
-            eprint!("{}: starting... ", svc.name);
-            if svc.run(&["start", "-D"]) {
-                eprintln!("ok");
+            eprint!("{}: starting", svc.name);
+            if !svc.run_quiet(&["start", "-D"]) {
+                eprintln!(" failed");
+                failed = true;
+                continue;
+            }
+            if await_socket_exists(&svc.socket_path(), 5) {
+                eprintln!(" running");
             } else {
+                eprintln!(" failed");
                 failed = true;
             }
         }
@@ -430,18 +530,30 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
             eprintln!("{}: not running", svc.name);
             continue;
         }
-        eprint!("{}: stopping... ", svc.name);
+        eprint!("{}: stopping", svc.name);
         if svc.is_command_based() {
-            if svc.run(&["kill", &svc.name]) {
-                eprintln!("ok");
+            if !svc.run(&["stop", &svc.name]) {
+                eprintln!(" failed");
+                failed = true;
+                continue;
+            }
+            if await_process_status(svc, &svc.name, false, 5) {
+                eprintln!(" stopped");
             } else {
+                eprintln!(" failed");
                 failed = true;
             }
         } else {
-            if svc.run(&["quit"]) {
+            if !svc.run(&["quit"]) {
+                eprintln!(" failed");
+                failed = true;
+                continue;
+            }
+            if await_socket_gone(&svc.socket_path(), 5) {
                 let _ = fs::remove_file(svc.socket_path());
-                eprintln!("ok");
+                eprintln!(" stopped");
             } else {
+                eprintln!(" failed");
                 failed = true;
             }
         }
@@ -458,11 +570,17 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
 
     let mut failed = false;
     for svc in targets {
-        eprint!("{}: reloading... ", svc.name);
+        eprint!("{}: reloading", svc.name);
         if svc.is_command_based() {
-            if svc.run(&["restart", &svc.name]) {
-                eprintln!("ok");
+            if !svc.run(&["restart", &svc.name]) {
+                eprintln!(" failed");
+                failed = true;
+                continue;
+            }
+            if await_process_status(svc, &svc.name, true, 5) {
+                eprintln!(" running");
             } else {
+                eprintln!(" failed");
                 failed = true;
             }
         } else {
@@ -472,13 +590,19 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
                 let _ = fs::remove_file(svc.socket_path());
             }
             if !svc.has_procfile() {
-                eprintln!("no Procfile in {}", svc.dir.display());
+                eprintln!(" no Procfile");
                 failed = true;
                 continue;
             }
-            if svc.run(&["start", "-D"]) {
-                eprintln!("ok");
+            if !svc.run_quiet(&["start", "-D"]) {
+                eprintln!(" failed");
+                failed = true;
+                continue;
+            }
+            if await_socket_exists(&svc.socket_path(), 5) {
+                eprintln!(" running");
             } else {
+                eprintln!(" failed");
                 failed = true;
             }
         }
@@ -503,18 +627,58 @@ fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+const INTERACTIVE_COMMANDS: &[&str] = &["connect", "echo", "run"];
+
 fn cmd_passthrough(svc: &Service, args: &[String]) -> ExitCode {
     if !svc.is_running() && !args.first().is_some_and(|a| a == "start") {
         eprintln!("{}: not running", svc.name);
         return ExitCode::FAILURE;
     }
 
+    let cmd_name = args.first().map(|s| s.as_str()).unwrap_or("?");
+    let quiet = INTERACTIVE_COMMANDS.contains(&cmd_name);
+    if !quiet {
+        eprint!("{}: {}", svc.name, cmd_name);
+    }
     let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    match svc.overmind(&str_args) {
-        Ok(s) => exit_code(!s.success()),
-        Err(e) => {
-            eprintln!("overmind error: {e}");
+    let result = svc.overmind(&str_args);
+
+    if quiet {
+        return match result {
+            Ok(s) => exit_code(!s.success()),
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
+
+    match result {
+        Ok(s) if !s.success() => {
+            eprintln!(" failed (exit {})", s.code().unwrap_or(-1));
             ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!(" error: {e}");
+            ExitCode::FAILURE
+        }
+        Ok(_) => {
+            let verified = match cmd_name {
+                "restart" => await_process_status(svc, &svc.name, true, 5),
+                "quit" => await_socket_gone(&svc.socket_path(), 5),
+                _ => {
+                    eprintln!(" sent");
+                    return ExitCode::SUCCESS;
+                }
+            };
+            if verified {
+                match cmd_name {
+                    "restart" => eprintln!(" running"),
+                    "quit" => eprintln!(" stopped"),
+                    _ => eprintln!(" ok"),
+                }
+                ExitCode::SUCCESS
+            } else {
+                eprintln!(" failed");
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -530,22 +694,65 @@ fn cmd_passthrough_all(
         None => return ExitCode::FAILURE,
     };
 
+    let quiet = INTERACTIVE_COMMANDS.contains(&cmd);
     let mut failed = false;
     for svc in targets {
         if !svc.is_running() {
             eprintln!("{}: not running", svc.name);
             continue;
         }
+        if !quiet {
+            eprint!("{}: {}", svc.name, cmd);
+        }
         let mut args = vec![cmd.to_string()];
         args.extend(extra.iter().cloned());
         let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        match svc.overmind(&str_args) {
-            Ok(s) if !s.success() => failed = true,
-            Err(e) => {
-                eprintln!("{}: {e}", svc.name);
+        let result = svc.overmind(&str_args);
+
+        if quiet {
+            match result {
+                Ok(s) if !s.success() => failed = true,
+                Err(_) => failed = true,
+                _ => {}
+            }
+            continue;
+        }
+
+        match result {
+            Ok(s) if !s.success() => {
+                eprintln!(" failed (exit {})", s.code().unwrap_or(-1));
                 failed = true;
             }
-            _ => {}
+            Err(e) => {
+                eprintln!(" error: {e}");
+                failed = true;
+            }
+            Ok(_) => {
+                let verified = match cmd {
+                    "restart" => await_process_status(svc, &svc.name, true, 5),
+                    "kill" => {
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        eprint!(".");
+                        true
+                    }
+                    "quit" => await_socket_gone(&svc.socket_path(), 5),
+                    _ => {
+                        eprintln!(" sent");
+                        continue;
+                    }
+                };
+                if verified {
+                    match cmd {
+                        "restart" => eprintln!(" running"),
+                        "kill" => eprintln!(" killed"),
+                        "quit" => eprintln!(" stopped"),
+                        _ => eprintln!(" ok"),
+                    }
+                } else {
+                    eprintln!(" failed");
+                    failed = true;
+                }
+            }
         }
     }
     exit_code(failed)

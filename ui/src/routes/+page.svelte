@@ -169,6 +169,9 @@
 			<img src={logoSvg} alt="" class="logo" />
 			<span class="title-name">ubermind</span>
 		</div>
+		<div class="subtitle-row">
+			{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
+		</div>
 
 		<div class="header-row">
 			<span class="header-dot-cell">
@@ -215,9 +218,6 @@
 					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
 				</button>
 			</span>
-			<span class="header-summary">
-				{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
-			</span>
 		</div>
 
 		{#each services as service (service.name)}
@@ -238,20 +238,20 @@
 <style>
 	.page {
 		padding: calc(12px * var(--scale, 1)) calc(28px * var(--scale, 1));
-		max-width: 1400px;
-		margin: 0 auto;
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
+		align-items: center;
 		overflow: hidden;
 	}
 
 	.list {
 		display: grid;
-		grid-template-columns: calc(60px * var(--scale, 1)) auto auto 1fr;
-		grid-template-rows: auto auto;
+		grid-template-columns: calc(60px * var(--scale, 1)) auto auto;
+		grid-template-rows: auto auto auto;
 		grid-auto-rows: 1fr;
 		align-items: center;
+		width: fit-content;
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
@@ -263,7 +263,16 @@
 		align-items: center;
 		justify-content: center;
 		gap: calc(10px * var(--scale, 1));
-		padding: calc(10px * var(--scale, 1)) 0 calc(8px * var(--scale, 1));
+		padding: calc(10px * var(--scale, 1)) 0 0;
+	}
+
+	.subtitle-row {
+		grid-column: 1 / -1;
+		text-align: center;
+		font-size: calc(0.85rem * var(--scale, 1));
+		color: #3a3a4a;
+		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+		padding: calc(4px * var(--scale, 1)) 0 calc(10px * var(--scale, 1));
 	}
 
 	.logo {
@@ -320,14 +329,6 @@
 		align-items: center;
 		gap: var(--icon-gap, 14px);
 		padding: calc(14px * var(--scale, 1)) 0;
-	}
-
-	.header-summary {
-		font-size: calc(0.95rem * var(--scale, 1));
-		color: #3a3a4a;
-		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-		padding: calc(14px * var(--scale, 1)) 0;
-		text-align: right;
 	}
 
 	.hicon {

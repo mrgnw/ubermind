@@ -1,42 +1,30 @@
-# sv
+# ubermind ui
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Desktop dashboard for [ubermind](https://github.com/mrgnw/ubermind). View, start, stop, and reload services. Attach to live process output via terminal.
 
-## Creating a project
+Built with SvelteKit 2 (Svelte 5), Tauri 2, and xterm.js.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Prerequisites
 
-```sh
-# create a new project
-npx sv create my-app
-```
+- [Node.js](https://nodejs.org/) (or Bun)
+- [Rust toolchain](https://rustup.rs/)
+- [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+- A running ubermind HTTP server (port 13369)
 
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv create --template minimal --types ts --no-install /Users/m/dev/_daemons/ubermind/ui
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Dev
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+cargo tauri dev
 ```
 
-## Building
+This starts both the SvelteKit dev server and the Tauri window.
 
-To create a production version of your app:
+## Build
 
 ```sh
-npm run build
+cargo tauri build
 ```
 
-You can preview the production build with `npm run preview`.
+## Architecture
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+The UI connects to ubermind's HTTP + WebSocket server on port 13369. When running as a Tauri app, it uses Tauri's IPC invoke layer instead. The service detail page streams live process output over a WebSocket (`/ws/echo/{name}`) rendered with xterm.js.

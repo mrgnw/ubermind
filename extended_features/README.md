@@ -11,4 +11,5 @@ This directory documents features added to `ubermind` that extend the functional
 
 ## Features
 
+- [Action Confirmation](action-confirmation.md): Real-time feedback with dots showing command progress and verifying actions succeeded.
 - [Echo Filtering](echo-filtering.md): Filter logs by service name.
