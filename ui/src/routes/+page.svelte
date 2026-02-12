@@ -1,389 +1,579 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { getServices, startService, stopService, reloadService, type ServiceInfo } from '$lib/api';
-	import ServiceRow from '$lib/components/ServiceRow.svelte';
-	import logoSvg from '$lib/assets/logo.svg';
+    import { onMount } from "svelte";
+    import {
+        getServices,
+        startService,
+        stopService,
+        reloadService,
+        type ServiceInfo,
+    } from "$lib/api";
+    import ServiceRow from "$lib/components/ServiceRow.svelte";
+    import logoSvg from "$lib/assets/logo.svg";
 
-	let services = $state<ServiceInfo[]>([]);
-	let error = $state('');
-	let refreshTimer: ReturnType<typeof setInterval>;
-	let innerWidth = $state(800);
-	let selectedNames = $state<Set<string>>(new Set());
-	let bulkLoading = $state(false);
-	let headerCheckbox = $state<HTMLInputElement | null>(null);
+    let services = $state<ServiceInfo[]>([]);
+    let error = $state("");
+    let refreshTimer: ReturnType<typeof setInterval>;
+    let selectedNames = $state<Set<string>>(new Set());
+    let bulkLoading = $state(false);
+    let headerCheckbox = $state<HTMLInputElement | null>(null);
 
-	let scale = $derived(Math.max(0.85, Math.min(1.6, innerWidth / 800)));
-	let hasSelection = $derived(selectedNames.size > 0);
-	let allSelected = $derived(services.length > 0 && selectedNames.size === services.length);
-	let someSelected = $derived(hasSelection && !allSelected);
-	let runningCount = $derived(services.filter(s => s.running).length);
-	let stoppedCount = $derived(services.filter(s => !s.running).length);
+    let hasSelection = $derived(selectedNames.size > 0);
+    let allSelected = $derived(
+        services.length > 0 && selectedNames.size === services.length,
+    );
+    let someSelected = $derived(hasSelection && !allSelected);
+    let runningCount = $derived(services.filter((s) => s.running).length);
+    let stoppedCount = $derived(services.filter((s) => !s.running).length);
 
-	let selectedServices = $derived(services.filter(s => selectedNames.has(s.name)));
-	let selectedRunning = $derived(selectedServices.filter(s => s.running).length);
-	let selectedStopped = $derived(selectedServices.filter(s => !s.running).length);
+    let selectedServices = $derived(
+        services.filter((s) => selectedNames.has(s.name)),
+    );
+    let selectedRunning = $derived(
+        selectedServices.filter((s) => s.running).length,
+    );
+    let selectedStopped = $derived(
+        selectedServices.filter((s) => !s.running).length,
+    );
 
-	function syncIndeterminate() {
-		if (headerCheckbox) {
-			headerCheckbox.indeterminate = someSelected;
-		}
-	}
+    function syncIndeterminate() {
+        if (headerCheckbox) {
+            headerCheckbox.indeterminate = someSelected;
+        }
+    }
 
-	async function refresh() {
-		try {
-			services = await getServices();
-			error = '';
-			selectedNames = new Set([...selectedNames].filter(n => services.some(s => s.name === n)));
-			queueMicrotask(syncIndeterminate);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
-	}
+    async function refresh() {
+        try {
+            services = await getServices();
+            error = "";
+            selectedNames = new Set(
+                [...selectedNames].filter((n) =>
+                    services.some((s) => s.name === n),
+                ),
+            );
+            queueMicrotask(syncIndeterminate);
+        } catch (e) {
+            error = e instanceof Error ? e.message : String(e);
+        }
+    }
 
-	function toggleSelect(name: string, checked: boolean) {
-		const next = new Set(selectedNames);
-		if (checked) next.add(name);
-		else next.delete(name);
-		selectedNames = next;
-		queueMicrotask(syncIndeterminate);
-	}
+    function toggleSelect(name: string, checked: boolean) {
+        const next = new Set(selectedNames);
+        if (checked) next.add(name);
+        else next.delete(name);
+        selectedNames = next;
+        queueMicrotask(syncIndeterminate);
+    }
 
-	function headerCheckClicked() {
-		if (allSelected || someSelected) {
-			selectedNames = new Set();
-		} else {
-			selectedNames = new Set(services.map(s => s.name));
-		}
-		queueMicrotask(syncIndeterminate);
-	}
+    function headerCheckClicked() {
+        if (allSelected || someSelected) {
+            selectedNames = new Set();
+        } else {
+            selectedNames = new Set(services.map((s) => s.name));
+        }
+        queueMicrotask(syncIndeterminate);
+    }
 
-	async function bulkAction(action: 'start' | 'stop' | 'reload') {
-		bulkLoading = true;
-		const targets = [...selectedNames];
-		try {
-			await Promise.allSettled(
-				targets.map(name => {
-					if (action === 'start') return startService(name);
-					if (action === 'stop') return stopService(name);
-					return reloadService(name);
-				})
-			);
-			setTimeout(refresh, 300);
-		} catch (e) {
-			console.error(e);
-		} finally {
-			bulkLoading = false;
-		}
-	}
+    async function bulkAction(action: "start" | "stop" | "reload") {
+        bulkLoading = true;
+        const targets = [...selectedNames];
+        try {
+            await Promise.allSettled(
+                targets.map((name) => {
+                    if (action === "start") return startService(name);
+                    if (action === "stop") return stopService(name);
+                    return reloadService(name);
+                }),
+            );
+            setTimeout(refresh, 300);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            bulkLoading = false;
+        }
+    }
 
-	async function actionAll(action: 'start' | 'stop') {
-		bulkLoading = true;
-		const targets = action === 'start'
-			? services.filter(s => !s.running)
-			: services.filter(s => s.running);
-		try {
-			await Promise.allSettled(targets.map(s =>
-				action === 'start' ? startService(s.name) : stopService(s.name)
-			));
-			setTimeout(refresh, 300);
-		} catch (e) {
-			console.error(e);
-		} finally {
-			bulkLoading = false;
-		}
-	}
+    async function actionAll(action: "start" | "stop") {
+        bulkLoading = true;
+        const targets =
+            action === "start"
+                ? services.filter((s) => !s.running)
+                : services.filter((s) => s.running);
+        try {
+            await Promise.allSettled(
+                targets.map((s) =>
+                    action === "start"
+                        ? startService(s.name)
+                        : stopService(s.name),
+                ),
+            );
+            setTimeout(refresh, 300);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            bulkLoading = false;
+        }
+    }
 
-	onMount(() => {
-		refresh();
-		refreshTimer = setInterval(refresh, 5000);
-		return () => clearInterval(refreshTimer);
-	});
+    onMount(() => {
+        refresh();
+        refreshTimer = setInterval(refresh, 5000);
+        return () => clearInterval(refreshTimer);
+    });
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.metaKey || e.ctrlKey || e.altKey) return;
-		const tag = (e.target as HTMLElement)?.tagName;
-		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    function handleKeydown(e: KeyboardEvent) {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-		switch (e.key) {
-			case 'a':
-				e.preventDefault();
-				headerCheckClicked();
-				break;
-			case 's':
-				e.preventDefault();
-				if (hasSelection) {
-					if (selectedStopped > 0) bulkAction('start');
-				} else if (stoppedCount > 0) {
-					actionAll('start');
-				}
-				break;
-			case 'x':
-				e.preventDefault();
-				if (hasSelection) {
-					if (selectedRunning > 0) bulkAction('stop');
-				} else if (runningCount > 0) {
-					actionAll('stop');
-				}
-				break;
-			case 'r':
-				e.preventDefault();
-				if (hasSelection && selectedRunning > 0) bulkAction('reload');
-				break;
-			case 'Escape':
-				e.preventDefault();
-				selectedNames = new Set();
-				queueMicrotask(syncIndeterminate);
-				break;
-			default:
-				if (e.key >= '1' && e.key <= '9') {
-					const idx = parseInt(e.key) - 1;
-					if (idx < services.length) {
-						e.preventDefault();
-						toggleSelect(services[idx].name, !selectedNames.has(services[idx].name));
-					}
-				}
-		}
-	}
+        switch (e.key) {
+            case "a":
+                e.preventDefault();
+                headerCheckClicked();
+                break;
+            case "s":
+                e.preventDefault();
+                if (hasSelection) {
+                    if (selectedStopped > 0) bulkAction("start");
+                } else if (stoppedCount > 0) {
+                    actionAll("start");
+                }
+                break;
+            case "x":
+                e.preventDefault();
+                if (hasSelection) {
+                    if (selectedRunning > 0) bulkAction("stop");
+                } else if (runningCount > 0) {
+                    actionAll("stop");
+                }
+                break;
+            case "r":
+                e.preventDefault();
+                if (hasSelection && selectedRunning > 0) bulkAction("reload");
+                break;
+            case "Escape":
+                e.preventDefault();
+                selectedNames = new Set();
+                queueMicrotask(syncIndeterminate);
+                break;
+            default:
+                if (e.key >= "1" && e.key <= "9") {
+                    const idx = parseInt(e.key) - 1;
+                    if (idx < services.length) {
+                        e.preventDefault();
+                        toggleSelect(
+                            services[idx].name,
+                            !selectedNames.has(services[idx].name),
+                        );
+                    }
+                }
+        }
+    }
 </script>
 
-<svelte:window bind:innerWidth onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<div
-	class="page"
-	style:--scale={scale}
-	style:--row-py="{Math.round(18 * scale)}px"
-	style:--dot-size="{Math.round(18 * scale)}px"
-	style:--name-size="{1.35 * scale}rem"
-	style:--icon-size="{Math.round(28 * scale)}px"
-	style:--icon-gap="{Math.round(14 * scale)}px"
->
-	{#if error}
-		<div class="error">
-			{error}
-			<p>Make sure the ubermind-ui server is running on port 13369</p>
-		</div>
-	{/if}
+<div class="page">
+    {#if error}
+        <div class="error-wrap">
+            <div class="error">
+                {error}
+                <p>Make sure the ubermind-ui server is running on port 13369</p>
+            </div>
+        </div>
+    {/if}
 
-	<div class="list">
-		<div class="title-row">
-			<img src={logoSvg} alt="" class="logo" />
-			<span class="title-name">ubermind</span>
-		</div>
-		<div class="subtitle-row">
-			{runningCount} running{#if stoppedCount > 0}, {stoppedCount} stopped{/if}
-		</div>
+    <div class="panel">
+        <!-- Header -->
+        <header class="panel-header">
+            <div class="brand">
+                <img src={logoSvg} alt="" class="logo" />
+                <span class="brand-name">ubermind</span>
+            </div>
+            <div class="stats" aria-label="Service status">
+                {#if runningCount > 0}
+                    <span class="stat">
+                        <span class="stat-dot running"></span>
+                        <span class="stat-num">{runningCount}</span>
+                        <span class="stat-label">running</span>
+                    </span>
+                {/if}
+                {#if stoppedCount > 0}
+                    <span class="stat">
+                        <span class="stat-dot stopped"></span>
+                        <span class="stat-num">{stoppedCount}</span>
+                        <span class="stat-label">stopped</span>
+                    </span>
+                {/if}
+            </div>
+        </header>
 
-		<div class="header-row">
-			<span class="header-dot-cell">
-				<label class="header-check">
-					<input
-						type="checkbox"
-						bind:this={headerCheckbox}
-						checked={allSelected}
-						onclick={headerCheckClicked}
-					/>
-				</label>
-			</span>
-			<span class="header-label">
-				{#if hasSelection}
-					{selectedNames.size} selected
-				{/if}
-			</span>
-			<span class="header-actions">
-				<button
-					class="hicon start"
-					class:hidden={hasSelection ? selectedStopped === 0 : stoppedCount === 0}
-					onclick={() => hasSelection ? bulkAction('start') : actionAll('start')}
-					disabled={bulkLoading}
-					title={hasSelection ? 'Start selected' : 'Start all'}
-				>
-					<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z" /></svg>
-				</button>
-				<button
-					class="hicon stop"
-					class:hidden={hasSelection ? selectedRunning === 0 : runningCount === 0}
-					onclick={() => hasSelection ? bulkAction('stop') : actionAll('stop')}
-					disabled={bulkLoading}
-					title={hasSelection ? 'Stop selected' : 'Stop all'}
-				>
-					<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
-				</button>
-				<button
-					class="hicon reload"
-					class:hidden={!hasSelection || selectedRunning === 0}
-					onclick={() => bulkAction('reload')}
-					disabled={bulkLoading}
-					title="Reload selected"
-				>
-					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2" /><polyline points="12 2 13 5 10 5.5" /><polyline points="4 14 3 11 6 10.5" /></svg>
-				</button>
-			</span>
-		</div>
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <label class="select-all">
+                <input
+                    type="checkbox"
+                    bind:this={headerCheckbox}
+                    checked={allSelected}
+                    onclick={headerCheckClicked}
+                />
+                {#if hasSelection}
+                    <span class="selection-count"
+                        >{selectedNames.size} selected</span
+                    >
+                {/if}
+            </label>
+            <div class="toolbar-actions">
+                <button
+                    class="toolbar-btn start"
+                    class:hidden={hasSelection
+                        ? selectedStopped === 0
+                        : stoppedCount === 0}
+                    onclick={() =>
+                        hasSelection ? bulkAction("start") : actionAll("start")}
+                    disabled={bulkLoading}
+                    title={hasSelection
+                        ? "Start selected (s)"
+                        : "Start all (s)"}
+                >
+                    <svg viewBox="0 0 16 16" fill="currentColor"
+                        ><path d="M4 2.5v11l9-5.5z" /></svg
+                    >
+                    <span class="toolbar-btn-label"
+                        >{hasSelection ? "Start" : "Start all"}</span
+                    >
+                </button>
+                <button
+                    class="toolbar-btn stop"
+                    class:hidden={hasSelection
+                        ? selectedRunning === 0
+                        : runningCount === 0}
+                    onclick={() =>
+                        hasSelection ? bulkAction("stop") : actionAll("stop")}
+                    disabled={bulkLoading}
+                    title={hasSelection ? "Stop selected (x)" : "Stop all (x)"}
+                >
+                    <svg viewBox="0 0 16 16" fill="currentColor"
+                        ><rect
+                            x="3"
+                            y="3"
+                            width="10"
+                            height="10"
+                            rx="1.5"
+                        /></svg
+                    >
+                    <span class="toolbar-btn-label"
+                        >{hasSelection ? "Stop" : "Stop all"}</span
+                    >
+                </button>
+                {#if hasSelection && selectedRunning > 0}
+                    <button
+                        class="toolbar-btn reload"
+                        onclick={() => bulkAction("reload")}
+                        disabled={bulkLoading}
+                        title="Reload selected (r)"
+                    >
+                        <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                            ><path
+                                d="M2.5 8a5.5 5.5 0 0 1 9.9-3.2M13.5 8a5.5 5.5 0 0 1-9.9 3.2"
+                            /><polyline points="12 2 13 5 10 5.5" /><polyline
+                                points="4 14 3 11 6 10.5"
+                            /></svg
+                        >
+                        <span class="toolbar-btn-label">Reload</span>
+                    </button>
+                {/if}
+            </div>
+        </div>
 
-		{#each services as service (service.name)}
-			<ServiceRow
-				{service}
-				onUpdate={refresh}
-				selected={selectedNames.has(service.name)}
-				onSelect={hasSelection ? toggleSelect : undefined}
-			/>
-		{/each}
-	</div>
+        <!-- Service list -->
+        <div class="service-list">
+            {#each services as service (service.name)}
+                <ServiceRow
+                    {service}
+                    onUpdate={refresh}
+                    selected={selectedNames.has(service.name)}
+                    onSelect={hasSelection ? toggleSelect : undefined}
+                />
+            {/each}
+        </div>
 
-	{#if services.length === 0 && !error}
-		<p class="empty">No services configured. Run <code>ubermind init</code> to get started.</p>
-	{/if}
+        {#if services.length === 0 && !error}
+            <div class="empty">
+                <p>No services configured</p>
+                <p class="empty-hint">
+                    Run <code>ubermind init</code> to get started
+                </p>
+            </div>
+        {/if}
+    </div>
 </div>
 
 <style>
-	.page {
-		padding: calc(12px * var(--scale, 1)) calc(28px * var(--scale, 1));
-		height: 100vh;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		overflow: hidden;
-	}
+    /*
+	 * Fluid scale:  at 400px vw → 14px base,  at 2400px+ vw → 32px base
+	 * Everything uses em so it all scales together.
+	 */
+    .page {
+        --base: clamp(14px, 0.4rem + 1.1vw, 32px);
+        font-size: var(--base);
 
-	.list {
-		display: grid;
-		grid-template-columns: calc(60px * var(--scale, 1)) auto auto;
-		grid-template-rows: auto auto auto;
-		grid-auto-rows: 1fr;
-		align-items: center;
-		width: fit-content;
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
-	}
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.5em 1em;
+        overflow-y: auto;
+    }
 
-	.title-row {
-		grid-column: 1 / -1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: calc(10px * var(--scale, 1));
-		padding: calc(10px * var(--scale, 1)) 0 0;
-	}
+    .panel {
+        width: 100%;
+        max-width: 42em;
+        display: flex;
+        flex-direction: column;
+    }
 
-	.subtitle-row {
-		grid-column: 1 / -1;
-		text-align: center;
-		font-size: calc(0.85rem * var(--scale, 1));
-		color: #3a3a4a;
-		font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-		padding: calc(4px * var(--scale, 1)) 0 calc(10px * var(--scale, 1));
-	}
+    /* ── Header ── */
+    .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 0.6em 1em;
+        gap: 1em;
+        flex-wrap: wrap;
+    }
 
-	.logo {
-		width: calc(36px * var(--scale, 1));
-		height: calc(36px * var(--scale, 1));
-		opacity: 0.5;
-		filter: brightness(0) invert(1);
-	}
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+    }
 
-	.title-name {
-		font-size: calc(1.5rem * var(--scale, 1));
-		font-weight: 700;
-		color: #444;
-		letter-spacing: 0.01em;
-	}
+    .logo {
+        width: 1.8em;
+        height: 1.8em;
+        opacity: 0.45;
+        filter: brightness(0) invert(1);
+    }
 
-	.header-row {
-		display: grid;
-		grid-template-columns: subgrid;
-		grid-column: 1 / -1;
-		align-items: center;
-		border-bottom: 1px solid #222238;
-	}
+    .brand-name {
+        font-size: 1.3em;
+        font-weight: 700;
+        color: #555;
+        letter-spacing: 0.02em;
+    }
 
-	.header-dot-cell {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: calc(14px * var(--scale, 1)) 0;
-	}
+    /* At large viewports, stack logo above brand name centered */
+    @media (min-width: 1200px) {
+        .panel-header {
+            flex-direction: column;
+            align-items: center;
+            gap: 0.6em;
+            padding-bottom: 1.4em;
+        }
 
-	.header-check {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-	}
+        .brand {
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3em;
+        }
 
-	.header-check input {
-		width: calc(20px * var(--scale, 1));
-		height: calc(20px * var(--scale, 1));
-		accent-color: #6366f1;
-		cursor: pointer;
-	}
+        .logo {
+            width: 3.5em;
+            height: 3.5em;
+            opacity: 0.5;
+        }
 
-	.header-label {
-		font-size: calc(0.9rem * var(--scale, 1));
-		color: #555;
-		padding: calc(14px * var(--scale, 1)) 0;
-	}
+        .brand-name {
+            font-size: 1.5em;
+        }
 
-	.header-actions {
-		display: flex;
-		align-items: center;
-		gap: var(--icon-gap, 14px);
-		padding: calc(14px * var(--scale, 1)) 0;
-	}
+        .stats {
+            gap: 1.4em;
+        }
+    }
 
-	.hicon {
-		width: var(--icon-size, 28px);
-		height: var(--icon-size, 28px);
-		border: none;
-		background: none;
-		color: #555;
-		cursor: pointer;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
-		transition: color 0.15s;
-	}
+    .stats {
+        display: flex;
+        align-items: center;
+        gap: 1em;
+    }
 
-	.hicon svg {
-		width: 100%;
-		height: 100%;
-	}
+    .stat {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        color: #555;
+    }
 
-	.hicon:hover { color: #ccc; }
-	.hicon.start:hover { color: #55cc55; }
-	.hicon.stop:hover { color: #dd6666; }
-	.hicon.reload:hover { color: #7777cc; }
-	.hicon:disabled { opacity: 0.25; cursor: not-allowed; }
-	.hicon.hidden { visibility: hidden; }
+    .stat-dot {
+        width: 0.6em;
+        height: 0.6em;
+        border-radius: 50%;
+    }
 
-	.error {
-		background: #2a1010;
-		border: 1px solid #552222;
-		border-radius: 6px;
-		padding: 12px 16px;
-		margin-bottom: 16px;
-		color: #cc6666;
-		font-size: calc(1rem * var(--scale, 1));
-	}
+    .stat-dot.running {
+        background: #44bb44;
+    }
+    .stat-dot.stopped {
+        background: #cc4444;
+    }
 
-	.error p {
-		margin: 6px 0 0;
-		font-size: calc(0.9rem * var(--scale, 1));
-		color: #888;
-	}
+    .stat-num {
+        font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+        font-weight: 600;
+        color: #888;
+    }
 
-	.empty {
-		color: #555;
-		text-align: center;
-		margin-top: 48px;
-		font-size: calc(1rem * var(--scale, 1));
-	}
+    .stat-label {
+        color: #555;
+        font-size: 0.85em;
+    }
 
-	code {
-		background: #1a1a2e;
-		padding: 2px 6px;
-		border-radius: 3px;
-		font-size: calc(0.95rem * var(--scale, 1));
-	}
+    /* ── Toolbar ── */
+    .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5em 0.6em;
+        border-bottom: 1px solid #1e1e32;
+        gap: 0.5em;
+        flex-wrap: wrap;
+    }
+
+    .select-all {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        cursor: pointer;
+        font-size: 0.85em;
+        color: #666;
+        user-select: none;
+    }
+
+    .select-all input {
+        width: 1.1em;
+        height: 1.1em;
+        accent-color: #6366f1;
+        cursor: pointer;
+        margin: 0;
+    }
+
+    .selection-count {
+        color: #8888cc;
+        font-weight: 500;
+    }
+
+    .toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.35em;
+    }
+
+    .toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+        border: none;
+        background: #1a1a2e;
+        color: #666;
+        cursor: pointer;
+        padding: 0.35em 0.75em;
+        border-radius: 0.4em;
+        font-size: 0.85em;
+        font-weight: 500;
+        transition: all 0.15s;
+    }
+
+    .toolbar-btn svg {
+        width: 1.4em;
+        height: 1.4em;
+        flex-shrink: 0;
+    }
+
+    .toolbar-btn:hover {
+        background: #252540;
+        color: #bbb;
+    }
+    .toolbar-btn.start:hover {
+        color: #55cc55;
+    }
+    .toolbar-btn.stop:hover {
+        color: #dd6666;
+    }
+    .toolbar-btn.reload:hover {
+        color: #7777cc;
+    }
+    .toolbar-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+    }
+    .toolbar-btn.hidden {
+        display: none;
+    }
+
+    /* Hide button text at very narrow widths, keep icons */
+    @media (max-width: 400px) {
+        .toolbar-btn-label {
+            display: none;
+        }
+        .toolbar-btn {
+            padding: 0.4em;
+        }
+    }
+
+    /* ── Service list ── */
+    .service-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ── Error ── */
+    .error-wrap {
+        width: 100%;
+        max-width: 42em;
+        margin-bottom: 1em;
+    }
+
+    .error {
+        background: #2a1010;
+        border: 1px solid #442222;
+        border-radius: 0.5em;
+        padding: 0.8em 1em;
+        color: #cc6666;
+    }
+
+    .error p {
+        margin: 0.3em 0 0;
+        font-size: 0.85em;
+        color: #777;
+    }
+
+    /* ── Empty ── */
+    .empty {
+        padding: 3em 0;
+        text-align: center;
+    }
+
+    .empty p {
+        margin: 0;
+        color: #555;
+    }
+
+    .empty-hint {
+        margin-top: 0.5em !important;
+        font-size: 0.9em !important;
+        color: #444 !important;
+    }
+
+    code {
+        background: #1a1a2e;
+        padding: 0.1em 0.4em;
+        border-radius: 0.2em;
+        font-size: 0.9em;
+    }
 </style>

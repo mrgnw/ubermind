@@ -27,6 +27,16 @@ pub fn reload_service(name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn restart_process(name: String, process: String) -> Result<String, String> {
+    services::restart_process(&name, &process)
+}
+
+#[tauri::command]
+pub fn kill_process(name: String, process: String) -> Result<String, String> {
+    services::kill_process(&name, &process)
+}
+
+#[tauri::command]
 pub fn echo_service(name: String) -> Result<String, String> {
     tmux::capture_all_panes(&name)
 }

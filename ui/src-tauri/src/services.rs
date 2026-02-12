@@ -220,6 +220,30 @@ pub fn stop_service(name: &str) -> Result<String, String> {
     result.map(|out| format!("{name}: stopped\n{out}"))
 }
 
+pub fn restart_process(service_name: &str, process_name: &str) -> Result<String, String> {
+    let services = load_services();
+    let svc = services
+        .get(service_name)
+        .ok_or(format!("unknown service: {service_name}"))?;
+    if !svc.is_running() {
+        return Err(format!("{service_name}: not running"));
+    }
+    svc.overmind_run(&["restart", process_name])
+        .map(|out| format!("{service_name}/{process_name}: restarted\n{out}"))
+}
+
+pub fn kill_process(service_name: &str, process_name: &str) -> Result<String, String> {
+    let services = load_services();
+    let svc = services
+        .get(service_name)
+        .ok_or(format!("unknown service: {service_name}"))?;
+    if !svc.is_running() {
+        return Err(format!("{service_name}: not running"));
+    }
+    svc.overmind_run(&["kill", process_name])
+        .map(|out| format!("{service_name}/{process_name}: killed\n{out}"))
+}
+
 pub fn reload_service(name: &str) -> Result<String, String> {
     let services = load_services();
     let svc = services
