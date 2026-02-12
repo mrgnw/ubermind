@@ -18,7 +18,7 @@
 	let innerWidth = $state(800);
 
 	let name = $derived(page.params.name!);
-	let scale = $derived(Math.max(0.85, Math.min(1.4, innerWidth / 900)));
+	let scale = $derived(Math.max(0.85, Math.min(1.6, innerWidth / 800)));
 
 	async function refresh() {
 		try {
@@ -60,7 +60,7 @@
 <div
 	class="page"
 	style:--scale={scale}
-	style:--icon-size="{Math.round(24 * scale)}px"
+	style:--icon-size="{Math.round(28 * scale)}px"
 >
 	<header>
 		<a href="/" class="back" title="Back to services">
@@ -110,7 +110,7 @@
 
 <style>
 	.page {
-		padding: calc(12px * var(--scale, 1)) calc(20px * var(--scale, 1));
+		padding: calc(12px * var(--scale, 1)) calc(28px * var(--scale, 1));
 		max-width: 1400px;
 		margin: 0 auto;
 		height: 100vh;
@@ -122,7 +122,7 @@
 	header {
 		display: flex;
 		align-items: center;
-		gap: calc(12px * var(--scale, 1));
+		gap: calc(14px * var(--scale, 1));
 		padding-bottom: calc(12px * var(--scale, 1));
 		border-bottom: 1px solid #222238;
 		flex-shrink: 0;
@@ -147,8 +147,8 @@
 	}
 
 	.dot {
-		width: calc(16px * var(--scale, 1));
-		height: calc(16px * var(--scale, 1));
+		width: calc(18px * var(--scale, 1));
+		height: calc(18px * var(--scale, 1));
 		border-radius: 50%;
 		background: #cc4444;
 		flex-shrink: 0;
@@ -159,15 +159,15 @@
 	}
 
 	h1 {
-		font-size: calc(1.3rem * var(--scale, 1));
-		font-weight: 700;
+		font-size: calc(1.35rem * var(--scale, 1));
+		font-weight: 600;
 		color: #e0e0e0;
 		margin: 0;
 	}
 
 	.actions {
 		display: flex;
-		gap: calc(12px * var(--scale, 1));
+		gap: calc(14px * var(--scale, 1));
 		margin-left: auto;
 	}
 
