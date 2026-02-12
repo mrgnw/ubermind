@@ -1,6 +1,6 @@
 [package]
 name = "ubermind"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2024"
 description = "Manage multiple overmind instances across projects"
 license = "MIT"
