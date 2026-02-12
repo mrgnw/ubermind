@@ -107,18 +107,149 @@ fn config_path() -> PathBuf {
     primary
 }
 
+fn detect_overmind_asset() -> Option<(&'static str, &'static str)> {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+
+    let os_part = match os {
+        "macos" => "macos",
+        "linux" => "linux",
+        _ => return None,
+    };
+    let arch_part = match arch {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        _ => return None,
+    };
+    Some((os_part, arch_part))
+}
+
+fn install_overmind() -> bool {
+    let (os_part, arch_part) = match detect_overmind_asset() {
+        Some(v) => v,
+        None => {
+            eprintln!("unsupported platform for auto-install");
+            return false;
+        }
+    };
+
+    // Resolve install directory: same dir as current exe, fallback to ~/.local/bin
+    let install_dir = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| home_dir().join(".local/bin"));
+
+    let dest = install_dir.join("overmind");
+
+    eprintln!("installing overmind to {}", dest.display());
+
+    // Fetch latest tag from GitHub API
+    let tag_output = Command::new("curl")
+        .args([
+            "-fsSL",
+            "https://api.github.com/repos/DarthSim/overmind/releases/latest",
+        ])
+        .output();
+
+    let tag = match tag_output {
+        Ok(out) => {
+            let body = String::from_utf8_lossy(&out.stdout);
+            body.lines()
+                .find(|l| l.contains("\"tag_name\""))
+                .and_then(|l| {
+                    let parts: Vec<&str> = l.split('"').collect();
+                    // "tag_name": "v2.5.1" -> splits to [..., "tag_name", ": ", "v2.5.1", ...]
+                    let idx = parts.iter().position(|&p| p == "tag_name")?;
+                    Some(parts.get(idx + 2)?.to_string())
+                })
+                .unwrap_or_else(|| "v2.5.1".to_string())
+        }
+        Err(_) => "v2.5.1".to_string(),
+    };
+
+    let url = format!(
+        "https://github.com/DarthSim/overmind/releases/download/{tag}/overmind-{tag}-{os_part}-{arch_part}.gz"
+    );
+
+    eprintln!("downloading {url}");
+
+    // Download and decompress: curl | gunzip > dest
+    let curl = Command::new("curl")
+        .args(["-fsSL", &url])
+        .stdout(Stdio::piped())
+        .spawn();
+
+    let curl = match curl {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("failed to run curl: {e}");
+            return false;
+        }
+    };
+
+    let gunzip = Command::new("gunzip")
+        .arg("-c")
+        .stdin(curl.stdout.unwrap())
+        .stdout(Stdio::piped())
+        .output();
+
+    match gunzip {
+        Ok(out) if out.status.success() && !out.stdout.is_empty() => {
+            if let Err(e) = fs::write(&dest, &out.stdout) {
+                eprintln!("failed to write {}: {e}", dest.display());
+                return false;
+            }
+
+            // chmod +x
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o755));
+            }
+
+            eprintln!("installed overmind {tag} to {}", dest.display());
+            true
+        }
+        Ok(out) => {
+            eprintln!("gunzip failed: {}", String::from_utf8_lossy(&out.stderr));
+            false
+        }
+        Err(e) => {
+            eprintln!("failed to run gunzip: {e}");
+            false
+        }
+    }
+}
+
 fn check_overmind() {
     if Command::new("overmind")
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .is_err()
+        .is_ok()
     {
-        eprintln!("overmind not found in PATH");
-        eprintln!("install: https://github.com/DarthSim/overmind");
-        std::process::exit(1);
+        return;
     }
+
+    eprintln!("overmind not found in PATH");
+
+    if install_overmind() {
+        // Verify it works now
+        if Command::new("overmind")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            return;
+        }
+        eprintln!("overmind was installed but still not found in PATH");
+    }
+
+    eprintln!("install manually: https://github.com/DarthSim/overmind");
+    std::process::exit(1);
 }
 
 fn load_config_services() -> BTreeMap<String, Service> {
