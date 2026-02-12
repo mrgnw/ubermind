@@ -25,7 +25,7 @@
 			if (action === 'start') await startService(service.name);
 			else if (action === 'stop') await stopService(service.name);
 			else await reloadService(service.name);
-			setTimeout(onUpdate, 500);
+			setTimeout(onUpdate, 300);
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -48,7 +48,7 @@
 				/>
 			</label>
 		{:else}
-			<span class="dot" class:running={service.running}></span>
+			<span class="dot" class:running={service.running} class:loading></span>
 		{/if}
 	</span>
 
@@ -123,6 +123,15 @@
 
 	.dot.running {
 		background: #44bb44;
+	}
+
+	.dot.loading {
+		animation: dot-pulse 0.8s ease-in-out infinite;
+	}
+
+	@keyframes dot-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.3; }
 	}
 
 	.name {

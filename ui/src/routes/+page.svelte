@@ -68,7 +68,7 @@
 					return reloadService(name);
 				})
 			);
-			setTimeout(refresh, 800);
+			setTimeout(refresh, 300);
 		} catch (e) {
 			console.error(e);
 		} finally {
@@ -85,7 +85,7 @@
 			await Promise.allSettled(targets.map(s =>
 				action === 'start' ? startService(s.name) : stopService(s.name)
 			));
-			setTimeout(refresh, 800);
+			setTimeout(refresh, 300);
 		} catch (e) {
 			console.error(e);
 		} finally {
