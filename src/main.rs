@@ -18,48 +18,12 @@ struct Service {
 }
 
 impl Service {
-    fn is_command_based(&self) -> bool {
-        self.command.is_some()
-    }
-}
-
-impl Service {
     fn socket_path(&self) -> PathBuf {
         self.dir.join(".overmind.sock")
     }
 
     fn is_running(&self) -> bool {
-        if !self.socket_path().exists() {
-            return false;
-        }
-        if self.is_command_based() {
-            self.process_is_running()
-        } else {
-            true
-        }
-    }
-
-    fn process_is_running(&self) -> bool {
-        let output = Command::new("overmind")
-            .args(["status"])
-            .current_dir(&self.dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output();
-
-        match output {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                for line in stdout.lines() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 && parts[0] == self.name {
-                        return parts[1] != "exited";
-                    }
-                }
-                false
-            }
-            Err(_) => false,
-        }
+        self.socket_path().exists()
     }
 
     fn has_procfile(&self) -> bool {
@@ -218,11 +182,18 @@ fn load_procfile_services() -> BTreeMap<String, Service> {
         if let Some((name, cmd)) = line.split_once(':') {
             let name = name.trim().to_string();
             let cmd = cmd.trim().to_string();
+            let svc_dir = config_dir().join("proc").join(&name);
+            let _ = fs::create_dir_all(&svc_dir);
+            let procfile = svc_dir.join("Procfile");
+            let procfile_content = format!("{name}: {cmd}\n");
+            if fs::read_to_string(&procfile).ok().as_deref() != Some(&procfile_content) {
+                let _ = fs::write(&procfile, &procfile_content);
+            }
             services.insert(
                 name.clone(),
                 Service {
                     name,
-                    dir: config_dir(),
+                    dir: svc_dir,
                     command: Some(cmd),
                 },
             );
@@ -423,36 +394,6 @@ fn cmd_add(name: &str, dir: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn shared_overmind_running() -> bool {
-    config_dir().join(".overmind.sock").exists()
-}
-
-fn start_shared_overmind() -> bool {
-    let dir = config_dir();
-    if !dir.join("Procfile").exists() {
-        eprintln!("no Procfile in {}", dir.display());
-        return false;
-    }
-    match Command::new("overmind")
-        .args(["start", "-D"])
-        .current_dir(&dir)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-    {
-        Ok(s) if s.success() => true,
-        Ok(s) => {
-            eprintln!("failed (exit {})", s.code().unwrap_or(-1));
-            false
-        }
-        Err(e) => {
-            eprintln!("error: {e}");
-            false
-        }
-    }
-}
-
 fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
     let targets = match resolve_targets(services, name) {
         Some(t) => t,
@@ -465,53 +406,22 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
             eprintln!("{}: already running", svc.name);
             continue;
         }
-
-        if svc.is_command_based() {
-            if !shared_overmind_running() {
-                eprint!("{}: starting", svc.name);
-                if !start_shared_overmind() {
-                    eprintln!(" failed");
-                    failed = true;
-                    continue;
-                }
-                if await_process_status(svc, &svc.name, true, 5) {
-                    eprintln!(" running");
-                } else {
-                    eprintln!(" failed");
-                    failed = true;
-                }
-            } else {
-                eprint!("{}: restart", svc.name);
-                if !svc.run(&["restart", &svc.name]) {
-                    eprintln!(" failed");
-                    failed = true;
-                    continue;
-                }
-                if await_process_status(svc, &svc.name, true, 5) {
-                    eprintln!(" running");
-                } else {
-                    eprintln!(" failed");
-                    failed = true;
-                }
-            }
+        if !svc.has_procfile() {
+            eprintln!("{}: no Procfile in {}", svc.name, svc.dir.display());
+            failed = true;
+            continue;
+        }
+        eprint!("{}: starting", svc.name);
+        if !svc.run_quiet(&["start", "-D"]) {
+            eprintln!(" failed");
+            failed = true;
+            continue;
+        }
+        if await_socket_exists(&svc.socket_path(), 5) {
+            eprintln!(" running");
         } else {
-            if !svc.has_procfile() {
-                eprintln!("{}: no Procfile in {}", svc.name, svc.dir.display());
-                failed = true;
-                continue;
-            }
-            eprint!("{}: starting", svc.name);
-            if !svc.run_quiet(&["start", "-D"]) {
-                eprintln!(" failed");
-                failed = true;
-                continue;
-            }
-            if await_socket_exists(&svc.socket_path(), 5) {
-                eprintln!(" running");
-            } else {
-                eprintln!(" failed");
-                failed = true;
-            }
+            eprintln!(" failed");
+            failed = true;
         }
     }
 
@@ -531,31 +441,17 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
             continue;
         }
         eprint!("{}: stopping", svc.name);
-        if svc.is_command_based() {
-            if !svc.run(&["stop", &svc.name]) {
-                eprintln!(" failed");
-                failed = true;
-                continue;
-            }
-            if await_process_status(svc, &svc.name, false, 5) {
-                eprintln!(" stopped");
-            } else {
-                eprintln!(" failed");
-                failed = true;
-            }
+        if !svc.run(&["quit"]) {
+            eprintln!(" failed");
+            failed = true;
+            continue;
+        }
+        if await_socket_gone(&svc.socket_path(), 5) {
+            let _ = fs::remove_file(svc.socket_path());
+            eprintln!(" stopped");
         } else {
-            if !svc.run(&["quit"]) {
-                eprintln!(" failed");
-                failed = true;
-                continue;
-            }
-            if await_socket_gone(&svc.socket_path(), 5) {
-                let _ = fs::remove_file(svc.socket_path());
-                eprintln!(" stopped");
-            } else {
-                eprintln!(" failed");
-                failed = true;
-            }
+            eprintln!(" failed");
+            failed = true;
         }
     }
 
@@ -571,40 +467,26 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
     let mut failed = false;
     for svc in targets {
         eprint!("{}: reloading", svc.name);
-        if svc.is_command_based() {
-            if !svc.run(&["restart", &svc.name]) {
-                eprintln!(" failed");
-                failed = true;
-                continue;
-            }
-            if await_process_status(svc, &svc.name, true, 5) {
-                eprintln!(" running");
-            } else {
-                eprintln!(" failed");
-                failed = true;
-            }
+        if svc.is_running() {
+            let _ = svc.overmind(&["quit"]);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let _ = fs::remove_file(svc.socket_path());
+        }
+        if !svc.has_procfile() {
+            eprintln!(" no Procfile");
+            failed = true;
+            continue;
+        }
+        if !svc.run_quiet(&["start", "-D"]) {
+            eprintln!(" failed");
+            failed = true;
+            continue;
+        }
+        if await_socket_exists(&svc.socket_path(), 5) {
+            eprintln!(" running");
         } else {
-            if svc.is_running() {
-                let _ = svc.overmind(&["quit"]);
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                let _ = fs::remove_file(svc.socket_path());
-            }
-            if !svc.has_procfile() {
-                eprintln!(" no Procfile");
-                failed = true;
-                continue;
-            }
-            if !svc.run_quiet(&["start", "-D"]) {
-                eprintln!(" failed");
-                failed = true;
-                continue;
-            }
-            if await_socket_exists(&svc.socket_path(), 5) {
-                eprintln!(" running");
-            } else {
-                eprintln!(" failed");
-                failed = true;
-            }
+            eprintln!(" failed");
+            failed = true;
         }
     }
 
