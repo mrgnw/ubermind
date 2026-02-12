@@ -221,6 +221,107 @@ fn install_overmind() -> bool {
     }
 }
 
+fn check_tmux() {
+    if Command::new("tmux")
+        .arg("-V")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return;
+    }
+
+    eprintln!("tmux not found (required by overmind)");
+
+    // Try to install via system package manager
+    let installed = if cfg!(target_os = "macos") {
+        eprintln!("installing tmux via brew...");
+        Command::new("brew")
+            .args(["install", "tmux"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else {
+        // Linux: try apt, then yum/dnf, then apk
+        if Command::new("apt-get")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            eprintln!("installing tmux via apt-get...");
+            Command::new("sudo")
+                .args(["apt-get", "install", "-y", "tmux"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else if Command::new("dnf")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            eprintln!("installing tmux via dnf...");
+            Command::new("sudo")
+                .args(["dnf", "install", "-y", "tmux"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else if Command::new("yum")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            eprintln!("installing tmux via yum...");
+            Command::new("sudo")
+                .args(["yum", "install", "-y", "tmux"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else if Command::new("apk")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            eprintln!("installing tmux via apk...");
+            Command::new("apk")
+                .args(["add", "tmux"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    };
+
+    if installed {
+        if Command::new("tmux")
+            .arg("-V")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+        {
+            eprintln!("tmux installed successfully");
+            return;
+        }
+        eprintln!("tmux was installed but still not found in PATH");
+    }
+
+    eprintln!("please install tmux manually:");
+    eprintln!("  macOS:  brew install tmux");
+    eprintln!("  Ubuntu: sudo apt install tmux");
+    eprintln!("  Fedora: sudo dnf install tmux");
+    std::process::exit(1);
+}
+
 fn check_overmind() {
     if Command::new("overmind")
         .arg("--version")
@@ -341,6 +442,7 @@ fn load_services() -> BTreeMap<String, Service> {
 }
 
 fn require_services() -> BTreeMap<String, Service> {
+    check_tmux();
     check_overmind();
     let services = load_services();
     if services.is_empty() {

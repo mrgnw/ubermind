@@ -73,6 +73,57 @@ ln -sf "${install_dir}/${bin}" "${install_dir}/ub"
 echo "installed ${install_dir}/${bin}"
 echo "created alias ${install_dir}/ub"
 
+# --- install tmux if missing ---
+
+if command -v tmux >/dev/null 2>&1; then
+	echo "tmux already installed: $(tmux -V 2>&1)"
+else
+	echo
+	echo "tmux not found (required by overmind)"
+
+	os=$(uname -s)
+	case "${os}" in
+		Darwin)
+			if command -v brew >/dev/null 2>&1; then
+				echo "installing tmux via brew..."
+				brew install tmux
+			else
+				echo "please install tmux: brew install tmux"
+				exit 1
+			fi
+			;;
+		Linux)
+			if command -v apt-get >/dev/null 2>&1; then
+				echo "installing tmux via apt-get..."
+				sudo apt-get install -y tmux
+			elif command -v dnf >/dev/null 2>&1; then
+				echo "installing tmux via dnf..."
+				sudo dnf install -y tmux
+			elif command -v yum >/dev/null 2>&1; then
+				echo "installing tmux via yum..."
+				sudo yum install -y tmux
+			elif command -v apk >/dev/null 2>&1; then
+				echo "installing tmux via apk..."
+				apk add tmux
+			else
+				echo "please install tmux manually"
+				exit 1
+			fi
+			;;
+		*)
+			echo "please install tmux manually"
+			exit 1
+			;;
+	esac
+
+	if command -v tmux >/dev/null 2>&1; then
+		echo "tmux installed: $(tmux -V 2>&1)"
+	else
+		echo "tmux installation failed"
+		exit 1
+	fi
+fi
+
 # --- install overmind if missing ---
 
 if command -v overmind >/dev/null 2>&1; then
