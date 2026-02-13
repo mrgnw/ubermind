@@ -746,6 +746,13 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
 }
 
 fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
+    // Show serve status first
+    match serve_running_pid() {
+        Some(pid) => println!("ubermind-serve\trunning\tPID {pid}"),
+        None => println!("ubermind-serve\tstopped\t"),
+    }
+
+    // Then show other services
     for svc in services.values() {
         let state = if svc.is_running() {
             "running"
@@ -987,24 +994,54 @@ fn save_serve_state(log_path: &PathBuf) {
     let _ = fs::write(serve_state_file(), log_path.display().to_string());
 }
 
+fn serve_running_pid() -> Option<u32> {
+    Command::new("lsof")
+        .args(["-ti", ":13369", "-sTCP:LISTEN"])
+        .output()
+        .ok()
+        .and_then(|out| {
+            if out.stdout.is_empty() {
+                None
+            } else {
+                let pid_str = String::from_utf8_lossy(&out.stdout);
+                pid_str.trim().parse::<u32>().ok()
+            }
+        })
+}
+
 fn cmd_serve(args: &[String]) -> ExitCode {
     let serve_bin = "ubermind-serve";
     let daemon = args.iter().any(|a| a == "-d" || a == "--daemon");
     let stop = args.iter().any(|a| a == "--stop");
     let echo = args.iter().any(|a| a == "--echo");
     let restart = args.iter().any(|a| a == "--restart");
+    let status = args.iter().any(|a| a == "--status");
     let extra: Vec<&str> = args
         .iter()
         .filter(|a| {
             !matches!(
                 a.as_str(),
-                "-d" | "--daemon" | "--stop" | "--echo" | "--restart"
+                "-d" | "--daemon" | "--stop" | "--echo" | "--restart" | "--status"
             )
         })
         .map(|s| s.as_str())
         .collect();
 
-    if echo {
+    if status {
+        match serve_running_pid() {
+            Some(pid) => {
+                println!("ubermind-serve\trunning (PID {pid})");
+                if let Some(log_file) = serve_log_file() {
+                    println!("logs: {}", log_file.display());
+                }
+                ExitCode::SUCCESS
+            }
+            None => {
+                println!("ubermind-serve\tnot running");
+                ExitCode::FAILURE
+            }
+        }
+    } else if echo {
         match serve_log_file() {
             Some(log_file) if log_file.exists() => {
                 let status = Command::new("tail")
@@ -1033,18 +1070,7 @@ fn cmd_serve(args: &[String]) -> ExitCode {
         }
     } else if restart {
         eprint!("restarting ubermind-serve");
-        let stop_result = Command::new("lsof")
-            .args(["-ti", ":13369", "-sTCP:LISTEN"])
-            .output()
-            .ok()
-            .and_then(|out| {
-                if out.stdout.is_empty() {
-                    None
-                } else {
-                    let pid_str = String::from_utf8_lossy(&out.stdout);
-                    pid_str.trim().parse::<u32>().ok()
-                }
-            })
+        let stop_result = serve_running_pid()
             .and_then(|pid| Command::new("kill").arg(pid.to_string()).status().ok());
 
         if stop_result.is_some() {
@@ -1089,32 +1115,18 @@ fn cmd_serve(args: &[String]) -> ExitCode {
             }
         }
     } else if stop {
-        let output = Command::new("lsof")
-            .args(["-ti", ":13369", "-sTCP:LISTEN"])
-            .output();
-
-        match output {
-            Ok(out) if !out.stdout.is_empty() => {
-                let pid_str = String::from_utf8_lossy(&out.stdout);
-                let pid: u32 = match pid_str.trim().parse() {
-                    Ok(p) => p,
-                    Err(_) => {
-                        eprintln!("failed to parse PID: {}", pid_str.trim());
-                        return ExitCode::FAILURE;
-                    }
-                };
-                match Command::new("kill").arg(pid.to_string()).status() {
-                    Ok(_) => {
-                        eprintln!("stopped ubermind-serve (PID {pid})");
-                        ExitCode::SUCCESS
-                    }
-                    Err(e) => {
-                        eprintln!("failed to kill process: {e}");
-                        ExitCode::FAILURE
-                    }
+        match serve_running_pid() {
+            Some(pid) => match Command::new("kill").arg(pid.to_string()).status() {
+                Ok(_) => {
+                    eprintln!("stopped ubermind-serve (PID {pid})");
+                    ExitCode::SUCCESS
                 }
-            }
-            _ => {
+                Err(e) => {
+                    eprintln!("failed to kill process: {e}");
+                    ExitCode::FAILURE
+                }
+            },
+            None => {
                 eprintln!("ubermind-serve not running (port 13369 not in use)");
                 ExitCode::FAILURE
             }
