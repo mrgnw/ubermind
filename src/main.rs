@@ -488,12 +488,29 @@ fn resolve_targets<'a>(
     }
 }
 
+fn is_all_flag(s: &str) -> bool {
+    matches!(s, "*" | "--all" | "-a" | "all")
+}
+
 fn resolve_targets_context_aware<'a>(
     services: &'a BTreeMap<String, Service>,
     name: Option<&str>,
 ) -> Option<Vec<&'a Service>> {
     match name {
-        Some("*") => Some(services.values().collect()),
+        Some(n) if is_all_flag(n) => {
+            let cwd = env::current_dir().ok();
+            let mut targets: Vec<&Service> = Vec::with_capacity(services.len());
+            let mut rest: Vec<&Service> = Vec::new();
+            for svc in services.values() {
+                if cwd.as_ref() == Some(&svc.dir) {
+                    targets.insert(0, svc);
+                } else {
+                    rest.push(svc);
+                }
+            }
+            targets.extend(rest);
+            Some(targets)
+        }
         Some(n) => match services.get(n) {
             Some(svc) => Some(vec![svc]),
             None => {
@@ -525,7 +542,7 @@ fn resolve_targets_context_aware<'a>(
             eprintln!("current directory: {}", cwd.display());
             eprintln!();
             eprintln!("to target all projects, run:");
-            eprintln!("  {BIN} <command> '*'");
+            eprintln!("  {BIN} <command> --all");
             eprintln!();
             eprintln!("registered projects:");
             for (name, svc) in services {
@@ -863,7 +880,7 @@ fn cmd_status(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
     const RED: &str = "\x1b[31m";
     const RESET: &str = "\x1b[0m";
 
-    if name == Some("*") {
+    if name.is_some_and(|n| is_all_flag(n)) {
         match serve_running_pid() {
             Some(pid) => println!("{}●{}\tubermind-serve\tPID {}", GREEN, RESET, pid),
             None => println!("{}●{}\tubermind-serve\tstopped", RED, RESET),
@@ -1417,7 +1434,7 @@ fn main() -> ExitCode {
         "status" | "st" => {
             let services = require_services();
             let name = args.get(1).map(|s| s.as_str());
-            if name.is_some() && name != Some("*") && args.len() > 2 {
+            if name.is_some_and(|n| !is_all_flag(n)) && args.len() > 2 {
                 if let Some(svc) = services.get(name.unwrap()) {
                     let mut passthrough_args = vec!["status".to_string()];
                     passthrough_args.extend_from_slice(&args[2..]);
