@@ -90,21 +90,8 @@ fn config_dir() -> PathBuf {
     home_dir().join(".config/ubermind")
 }
 
-fn config_path() -> PathBuf {
-    let primary = config_dir().join("services");
-    if primary.exists() {
-        return primary;
-    }
-    for legacy in [
-        config_dir().join("services.tsv"),
-        home_dir().join(".config/dm/services.tsv"),
-        home_dir().join("dev/_daemons/services.tsv"),
-    ] {
-        if legacy.exists() {
-            return legacy;
-        }
-    }
-    primary
+fn projects_config_path() -> PathBuf {
+    config_dir().join("projects")
 }
 
 fn detect_overmind_asset() -> Option<(&'static str, &'static str)> {
@@ -353,8 +340,8 @@ fn check_overmind() {
     std::process::exit(1);
 }
 
-fn load_config_services() -> BTreeMap<String, Service> {
-    let path = config_path();
+fn load_projects() -> BTreeMap<String, Service> {
+    let path = projects_config_path();
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return BTreeMap::new(),
@@ -396,8 +383,8 @@ fn load_config_services() -> BTreeMap<String, Service> {
     services
 }
 
-fn load_procfile_services() -> BTreeMap<String, Service> {
-    let path = config_dir().join("Procfile");
+fn load_commands() -> BTreeMap<String, Service> {
+    let path = config_dir().join("commands");
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return BTreeMap::new(),
@@ -414,7 +401,7 @@ fn load_procfile_services() -> BTreeMap<String, Service> {
         if let Some((name, cmd)) = line.split_once(':') {
             let name = name.trim().to_string();
             let cmd = cmd.trim().to_string();
-            let svc_dir = config_dir().join("proc").join(&name);
+            let svc_dir = config_dir().join("_commands").join(&name);
             let _ = fs::create_dir_all(&svc_dir);
             let procfile = svc_dir.join("Procfile");
             let procfile_content = format!("{name}: {cmd}\n");
@@ -436,8 +423,8 @@ fn load_procfile_services() -> BTreeMap<String, Service> {
 }
 
 fn load_services() -> BTreeMap<String, Service> {
-    let mut services = load_config_services();
-    services.extend(load_procfile_services());
+    let mut services = load_projects();
+    services.extend(load_commands());
     services
 }
 
@@ -446,9 +433,9 @@ fn require_services() -> BTreeMap<String, Service> {
     check_overmind();
     let services = load_services();
     if services.is_empty() {
-        let path = config_dir().join("services");
+        let path = projects_config_path();
         if path.exists() {
-            eprintln!("no services configured");
+            eprintln!("no projects configured");
             eprintln!();
             eprintln!("add a project:");
             eprintln!("  {BIN} add myapp ~/dev/myapp");
@@ -459,8 +446,9 @@ fn require_services() -> BTreeMap<String, Service> {
             eprintln!("each project directory needs a Procfile with processes to run:");
             eprintln!("  web: npm run dev");
             eprintln!("  api: python server.py");
+            eprintln!("  worker: ruby worker.rb");
         } else {
-            eprintln!("no services configured");
+            eprintln!("no projects configured");
             eprintln!("run '{BIN} init' to get started");
         }
         eprintln!();
@@ -488,7 +476,7 @@ fn resolve_targets<'a>(
         Some(n) => match services.get(n) {
             Some(svc) => Some(vec![svc]),
             None => {
-                eprintln!("unknown service: {n}");
+                eprintln!("unknown project: {n}");
                 eprintln!(
                     "available: {}",
                     services.keys().cloned().collect::<Vec<_>>().join(", ")
@@ -572,7 +560,7 @@ fn await_socket_exists(socket_path: &PathBuf, max_secs: u8) -> bool {
 
 fn cmd_init() -> ExitCode {
     let dir = config_dir();
-    let path = dir.join("services");
+    let path = dir.join("projects");
     if path.exists() {
         eprintln!("config already exists: {}", path.display());
         return ExitCode::SUCCESS;
@@ -599,7 +587,7 @@ fn cmd_init() -> ExitCode {
             eprintln!("       api: python server.py");
             eprintln!("       worker: ruby worker.rb");
             eprintln!();
-            eprintln!("  3. start your services:");
+            eprintln!("  3. start your projects:");
             eprintln!("     {BIN} start");
             eprintln!();
             eprintln!("docs: https://github.com/mrgnw/ubermind#quick-start");
@@ -613,7 +601,7 @@ fn cmd_init() -> ExitCode {
 }
 
 fn cmd_add(name: &str, dir: &str) -> ExitCode {
-    let path = config_path();
+    let path = projects_config_path();
     if !path.exists() {
         eprintln!("no config file found. run '{BIN} init' first");
         return ExitCode::FAILURE;
@@ -635,7 +623,7 @@ fn cmd_add(name: &str, dir: &str) -> ExitCode {
         let sep = if line.contains(':') { ':' } else { '\t' };
         if let Some(existing_name) = line.split(sep).next() {
             if existing_name.trim() == name {
-                eprintln!("service '{name}' already exists in {}", path.display());
+                eprintln!("project '{name}' already exists in {}", path.display());
                 return ExitCode::FAILURE;
             }
         }
@@ -1016,37 +1004,37 @@ fn print_usage() {
     eprintln!("{BIN} {v} - manage multiple overmind instances");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  {BIN} status              show all services");
-    eprintln!("  {BIN} start [name]        start service(s)");
-    eprintln!("  {BIN} stop [name]         stop service(s)");
-    eprintln!("  {BIN} reload [name]       restart service(s) (picks up Procfile changes)");
-    eprintln!("  {BIN} kill [name]         kill process(es) in service(s)");
-    eprintln!("  {BIN} restart [name]      restart process(es) in service(s)");
-    eprintln!("  {BIN} echo [name]         view logs from service(s)");
-    eprintln!("  {BIN} connect [name]      connect to a process in a service");
+    eprintln!("  {BIN} status              show all projects");
+    eprintln!("  {BIN} start [name]        start project(s)");
+    eprintln!("  {BIN} stop [name]         stop project(s)");
+    eprintln!("  {BIN} reload [name]       restart project(s) (picks up Procfile changes)");
+    eprintln!("  {BIN} kill [name]         kill process(es) in project(s)");
+    eprintln!("  {BIN} restart [name]      restart process(es) in project(s)");
+    eprintln!("  {BIN} echo [name]         view logs from project(s)");
+    eprintln!("  {BIN} connect [name]      connect to a process in a project");
     eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
     eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
     eprintln!("  {BIN} serve [-p PORT]     start web UI server (default port: 13369)");
     eprintln!("  {BIN} init                create config file");
-    eprintln!("  {BIN} add <name> <dir>    add a service");
+    eprintln!("  {BIN} add <name> <dir>    add a project");
     eprintln!();
     eprintln!("examples:");
-    eprintln!("  {BIN} start               start all services");
+    eprintln!("  {BIN} start               start all projects");
     eprintln!("  {BIN} start myapp         start just myapp");
-    eprintln!("  {BIN} kill                kill all processes in all services");
+    eprintln!("  {BIN} kill                kill all processes in all projects");
     eprintln!("  {BIN} kill myapp          kill all processes in myapp");
-    eprintln!("  {BIN} echo                view logs from all services");
+    eprintln!("  {BIN} echo                view logs from all projects");
     eprintln!("  {BIN} echo myapp          view logs from myapp");
     eprintln!("  {BIN} status myapp        show myapp's overmind process status");
     eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
     eprintln!("  {BIN} connect web myapp   same thing, project name last");
     eprintln!();
     eprintln!("config:");
-    eprintln!("  services: {}", config_path().display());
-    eprintln!("  Procfile: {}", config_dir().join("Procfile").display());
+    eprintln!("  projects: {}", projects_config_path().display());
+    eprintln!("  commands: {}", config_dir().join("commands").display());
     eprintln!();
-    eprintln!("services file defines directory-based services (name: ~/path/to/project)");
-    eprintln!("Procfile defines command-based services (name: command args)");
+    eprintln!("projects file defines directory-based projects (name: ~/path/to/project)");
+    eprintln!("commands file defines standalone commands in Procfile format (name: command args)");
 }
 
 fn check_alias_hint() {
@@ -1164,7 +1152,7 @@ fn main() -> ExitCode {
                 let cmd_args: Vec<String> = args[..args.len() - 1].to_vec();
                 cmd_passthrough(svc, &cmd_args)
             } else {
-                eprintln!("unknown command or service: {name}");
+                eprintln!("unknown command or project: {name}");
                 eprintln!();
                 print_usage();
                 ExitCode::FAILURE

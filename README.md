@@ -30,7 +30,7 @@ overmind (and tmux) will be installed automatically if missing.
 ubermind init
 ```
 
-This creates a services config at `~/.config/ubermind/services`.
+This creates a projects config at `~/.config/ubermind/projects`.
 
 ### 2. Create a Procfile in your project
 
@@ -64,7 +64,7 @@ ubermind start          # or start everything
 
 ubermind has two layers of config:
 
-**Services file** (`~/.config/ubermind/services`) — maps project names to directories:
+**Projects file** (`~/.config/ubermind/projects`) — maps project names to directories:
 
 ```
 myapp: ~/dev/myapp
@@ -72,7 +72,15 @@ api: ~/dev/api-server
 frontend: ~/dev/frontend
 ```
 
-**Procfile** (in each project directory) — defines what processes to run:
+**Commands file** (`~/.config/ubermind/commands`) — optional, defines standalone commands in Procfile format:
+
+```
+# Each line is a standalone command that runs as its own overmind instance
+tunnel: ssh -N -L 5432:localhost:5432 prod-server
+sync: watchman-wait . --max-events 0 -p '*.json' | xargs ./sync.sh
+```
+
+Each project directory has its own **Procfile** that defines what processes to run:
 
 ```
 # ~/dev/myapp/Procfile
@@ -89,20 +97,22 @@ dev: pnpm dev
 
 When you run `ubermind start myapp`, ubermind looks up `myapp` → `~/dev/myapp`, then starts overmind in that directory using its `Procfile`. Each project gets its own isolated overmind instance — one project crashing won't affect the others.
 
+Standalone commands from the `commands` file are auto-expanded into generated Procfiles under `~/.config/ubermind/_commands/` so overmind can manage them the same way.
+
 ## Usage
 
 ```
-ubermind init                # create services config file
+ubermind init                # create projects config file
 ubermind add <name> <dir>    # register a project directory
 
-ubermind status              # show all services
-ubermind start [name]        # start service(s)
-ubermind stop [name]         # stop service(s)
-ubermind reload [name]       # restart service(s) (picks up Procfile changes)
-ubermind kill [name]         # kill process(es) in service(s)
-ubermind restart [name]      # restart process(es) in service(s)
-ubermind echo [name]         # view logs from service(s)
-ubermind connect [name]      # connect to a process in a service
+ubermind status              # show all projects
+ubermind start [name]        # start project(s)
+ubermind stop [name]         # stop project(s)
+ubermind reload [name]       # restart project(s) (picks up Procfile changes)
+ubermind kill [name]         # kill process(es) in project(s)
+ubermind restart [name]      # restart process(es) in project(s)
+ubermind echo [name]         # view logs from project(s)
+ubermind connect [name]      # connect to a process in a project
 ubermind serve [-p PORT]     # start web UI server (default port: 13369)
 ```
 
@@ -115,17 +125,17 @@ ubermind myapp connect web   # attach to myapp's web process
 ubermind connect web myapp   # same thing, project name last
 ```
 
-Omit the name to target all services:
+Omit the name to target all projects:
 
 ```
-ubermind start               # start all services
-ubermind stop                # stop all services
-ubermind echo                # view logs from all services
+ubermind start               # start all projects
+ubermind stop                # stop all projects
+ubermind echo                # view logs from all projects
 ```
 
 ## Config
 
-The services file lives at `~/.config/ubermind/services` (respects `$XDG_CONFIG_HOME`).
+The projects file lives at `~/.config/ubermind/projects` (respects `$XDG_CONFIG_HOME`).
 
 You can edit it directly or use `ubermind add`:
 
@@ -136,7 +146,7 @@ api: ~/dev/api-server
 frontend: ~/dev/frontend
 ```
 
-You can also define standalone command-based services in `~/.config/ubermind/Procfile`:
+Optionally, define standalone commands in `~/.config/ubermind/commands`:
 
 ```
 # These run as individual overmind instances without a project directory
@@ -149,6 +159,8 @@ See [tmux cheatsheet](tmux.md) for navigating connected sessions (scrolling, cop
 ## How it works
 
 Each project directory gets its own independent overmind instance with its own `.overmind.sock`. ubermind knows where each project lives and dispatches commands to the right overmind in the right directory.
+
+Standalone commands are auto-expanded into generated Procfiles under `~/.config/ubermind/_commands/` (an internal directory that you shouldn't edit directly).
 
 - `start`/`stop`/`reload` are ubermind-level commands that manage the overmind daemon lifecycle (daemonized start, graceful quit, socket cleanup).
 - Everything else is passed through directly to the project's overmind.

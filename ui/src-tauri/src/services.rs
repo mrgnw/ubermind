@@ -46,21 +46,12 @@ fn config_dir() -> PathBuf {
     home_dir().join(".config/ubermind")
 }
 
+fn projects_config_path() -> PathBuf {
+    config_dir().join("projects")
+}
+
 fn config_path() -> PathBuf {
-    let primary = config_dir().join("services");
-    if primary.exists() {
-        return primary;
-    }
-    for legacy in [
-        config_dir().join("services.tsv"),
-        home_dir().join(".config/dm/services.tsv"),
-        home_dir().join("dev/_daemons/services.tsv"),
-    ] {
-        if legacy.exists() {
-            return legacy;
-        }
-    }
-    primary
+    projects_config_path()
 }
 
 pub struct Service {

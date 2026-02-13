@@ -189,7 +189,7 @@
                 <img src={logoSvg} alt="" class="logo" />
                 <span class="brand-name">ubermind</span>
             </div>
-            <div class="stats" aria-label="Service status">
+            <div class="stats" aria-label="Project status">
                 {#if runningCount > 0}
                     <span class="stat">
                         <span class="stat-dot running"></span>
@@ -304,7 +304,7 @@
 
         {#if services.length === 0 && !error}
             <div class="empty">
-                <p>No services configured</p>
+                <p>No projects configured</p>
                 <p class="empty-hint">
                     Run <code>ubermind init</code> to get started
                 </p>
