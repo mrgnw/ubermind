@@ -54,6 +54,10 @@ fn config_path() -> PathBuf {
     projects_config_path()
 }
 
+fn commands_config_path() -> PathBuf {
+    config_dir().join("commands")
+}
+
 pub struct Service {
     pub name: String,
     pub dir: PathBuf,
@@ -145,30 +149,45 @@ impl Service {
 }
 
 pub fn load_services() -> BTreeMap<String, Service> {
-    let path = config_path();
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return BTreeMap::new(),
-    };
-
     let mut services = BTreeMap::new();
 
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
+    // Load directory-based services from projects
+    let path = config_path();
+    if let Ok(content) = fs::read_to_string(&path) {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            let sep = if line.contains(':') { ':' } else { '\t' };
+            let parts: Vec<&str> = line.splitn(2, sep).collect();
+            if parts.len() != 2 {
+                continue;
+            }
+
+            let name = parts[0].trim().to_string();
+            let dir = PathBuf::from(expand_tilde(parts[1].trim()));
+
+            services.insert(name.clone(), Service { name, dir });
         }
+    }
 
-        let sep = if line.contains(':') { ':' } else { '\t' };
-        let parts: Vec<&str> = line.splitn(2, sep).collect();
-        if parts.len() != 2 {
-            continue;
+    // Load command-based services from commands
+    let commands_path = commands_config_path();
+    if let Ok(content) = fs::read_to_string(&commands_path) {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            if let Some((name, _cmd)) = line.split_once(':') {
+                let name = name.trim().to_string();
+                let svc_dir = config_dir().join("_commands").join(&name);
+                services.insert(name.clone(), Service { name, dir: svc_dir });
+            }
         }
-
-        let name = parts[0].trim().to_string();
-        let dir = PathBuf::from(expand_tilde(parts[1].trim()));
-
-        services.insert(name.clone(), Service { name, dir });
     }
 
     services
