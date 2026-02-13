@@ -489,7 +489,7 @@ fn resolve_targets<'a>(
 }
 
 fn is_all_flag(s: &str) -> bool {
-    matches!(s, "*" | "--all" | "-a" | "all")
+    matches!(s, "--all" | "-a" | "all")
 }
 
 fn resolve_targets_context_aware<'a>(
@@ -1339,39 +1339,35 @@ fn print_usage() {
     eprintln!("{BIN} {v} - manage multiple overmind instances");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  {BIN} status [name|'*']   show project status");
-    eprintln!("  {BIN} start [name|'*']    start project(s)");
-    eprintln!("  {BIN} stop [name|'*']     stop project(s)");
-    eprintln!("  {BIN} reload [name|'*']   restart project(s) (picks up Procfile changes)");
-    eprintln!("  {BIN} kill [name|'*']     kill process(es) in project(s)");
-    eprintln!("  {BIN} restart [name|'*']  restart process(es) in project(s)");
-    eprintln!("  {BIN} echo [name|'*']     view logs from project(s)");
-    eprintln!("  {BIN} connect [name]      connect to a process in a project");
-    eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
-    eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
+    eprintln!("  {BIN} status [name|--all]  show project status");
+    eprintln!("  {BIN} start [name|--all]   start project(s)");
+    eprintln!("  {BIN} stop [name|--all]    stop project(s)");
+    eprintln!("  {BIN} reload [name|--all]  restart project(s) (picks up Procfile changes)");
+    eprintln!("  {BIN} kill [name|--all]    kill process(es) in project(s)");
+    eprintln!("  {BIN} restart [name|--all] restart process(es) in project(s)");
+    eprintln!("  {BIN} echo [name|--all]    view logs from project(s)");
+    eprintln!("  {BIN} connect [name]       connect to a process in a project");
+    eprintln!("  {BIN} <name> <cmd...>      pass command to project's overmind");
+    eprintln!("  {BIN} <cmd> <name>         pass command to project's overmind");
     eprintln!(
         "  {BIN} serve [-d] [-p PORT]  start web UI (use -d for daemon mode, default port: 13369)"
     );
-    eprintln!("  {BIN} init                create config file");
-    eprintln!("  {BIN} add <name> <dir>    add a project");
+    eprintln!("  {BIN} init                 create config file");
+    eprintln!("  {BIN} add <name> <dir>     add a project");
+    eprintln!();
+    eprintln!("when no name is given, commands target the project in the current directory.");
+    eprintln!("use --all to target every project.");
     eprintln!();
     eprintln!("examples:");
-    eprintln!("  {BIN} status              show status of current project");
-    eprintln!("  {BIN} status '*'          show status of all projects");
-    eprintln!("  {BIN} start               start project in current directory");
-    eprintln!("  {BIN} start '*'           start all projects");
-    eprintln!("  {BIN} start myapp         start just myapp");
-    eprintln!("  {BIN} stop                stop project in current directory");
-    eprintln!("  {BIN} stop '*'            stop all projects");
-    eprintln!("  {BIN} restart             restart processes in current project");
-    eprintln!("  {BIN} restart '*'         restart processes in all projects");
-    eprintln!("  {BIN} kill                kill processes in current project");
-    eprintln!("  {BIN} kill '*'            kill processes in all projects");
-    eprintln!("  {BIN} echo                view logs from current project");
-    eprintln!("  {BIN} echo '*'            view logs from all projects");
-    eprintln!("  {BIN} status myapp status show myapp's overmind process status");
-    eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
-    eprintln!("  {BIN} connect web myapp   same thing, project name last");
+    eprintln!("  {BIN} status               show status of current project");
+    eprintln!("  {BIN} status --all         show status of all projects");
+    eprintln!("  {BIN} start                start project in current directory");
+    eprintln!("  {BIN} start --all          start all projects");
+    eprintln!("  {BIN} start myapp          start just myapp");
+    eprintln!("  {BIN} stop --all           stop all projects");
+    eprintln!("  {BIN} restart --all        restart processes in all projects");
+    eprintln!("  {BIN} myapp connect web    attach to myapp's web process");
+    eprintln!("  {BIN} connect web myapp    same thing, project name last");
     eprintln!();
     eprintln!("config:");
     eprintln!("  projects: {}", projects_config_path().display());
