@@ -975,24 +975,100 @@ fn cmd_echo(
 
 fn cmd_serve(args: &[String]) -> ExitCode {
     let serve_bin = "ubermind-serve";
-    let extra: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    match Command::new(serve_bin)
-        .args(&extra)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-    {
-        Ok(s) if s.success() => ExitCode::SUCCESS,
-        Ok(s) => {
-            eprintln!("{serve_bin} exited with code {}", s.code().unwrap_or(-1));
-            ExitCode::FAILURE
+    let daemon = args.iter().any(|a| a == "-d" || a == "--daemon");
+    let stop = args.iter().any(|a| a == "--stop");
+    let extra: Vec<&str> = args
+        .iter()
+        .filter(|a| *a != "-d" && *a != "--daemon" && *a != "--stop")
+        .map(|s| s.as_str())
+        .collect();
+
+    if stop {
+        let output = Command::new("lsof")
+            .args(["-ti", ":13369", "-sTCP:LISTEN"])
+            .output();
+
+        match output {
+            Ok(out) if !out.stdout.is_empty() => {
+                let pid_str = String::from_utf8_lossy(&out.stdout);
+                let pid: u32 = match pid_str.trim().parse() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        eprintln!("failed to parse PID: {}", pid_str.trim());
+                        return ExitCode::FAILURE;
+                    }
+                };
+                match Command::new("kill").arg(pid.to_string()).status() {
+                    Ok(_) => {
+                        eprintln!("stopped ubermind-serve (PID {pid})");
+                        ExitCode::SUCCESS
+                    }
+                    Err(e) => {
+                        eprintln!("failed to kill process: {e}");
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+            _ => {
+                eprintln!("ubermind-serve not running (port 13369 not in use)");
+                ExitCode::FAILURE
+            }
         }
-        Err(_) => {
-            eprintln!("{serve_bin} not found in PATH");
-            eprintln!("build it from ubermind/ui/src-tauri:");
-            eprintln!("  cargo build --release --bin serve");
-            ExitCode::FAILURE
+    } else if daemon {
+        let log_dir = home_dir().join(".local/share/ubermind/log");
+        let _ = fs::create_dir_all(&log_dir);
+        let log_file = log_dir.join(format!(
+            "serve-{}.log",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        ));
+
+        let log = match fs::File::create(&log_file) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("failed to create log file: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+
+        match Command::new(serve_bin)
+            .args(&extra)
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+        {
+            Ok(_) => {
+                eprintln!("ubermind-serve started in background");
+                eprintln!("logs: {}", log_file.display());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("failed to start {serve_bin}: {e}");
+                ExitCode::FAILURE
+            }
+        }
+    } else {
+        match Command::new(serve_bin)
+            .args(&extra)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+        {
+            Ok(s) if s.success() => ExitCode::SUCCESS,
+            Ok(s) => {
+                eprintln!("{serve_bin} exited with code {}", s.code().unwrap_or(-1));
+                ExitCode::FAILURE
+            }
+            Err(_) => {
+                eprintln!("{serve_bin} not found in PATH");
+                eprintln!("build it from ubermind/ui/src-tauri:");
+                eprintln!("  cargo build --release --bin serve");
+                ExitCode::FAILURE
+            }
         }
     }
 }
@@ -1014,7 +1090,9 @@ fn print_usage() {
     eprintln!("  {BIN} connect [name]      connect to a process in a project");
     eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
     eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
-    eprintln!("  {BIN} serve [-p PORT]     start web UI server (default port: 13369)");
+    eprintln!(
+        "  {BIN} serve [-d] [-p PORT]  start web UI (use -d for daemon mode, default port: 13369)"
+    );
     eprintln!("  {BIN} init                create config file");
     eprintln!("  {BIN} add <name> <dir>    add a project");
     eprintln!();
