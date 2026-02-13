@@ -853,24 +853,40 @@ fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
     exit_code(failed)
 }
 
-fn cmd_status(services: &BTreeMap<String, Service>) -> ExitCode {
-    // Show serve status first
-    match serve_running_pid() {
-        Some(pid) => println!("ubermind-serve\trunning\tPID {pid}"),
-        None => println!("ubermind-serve\tstopped\t"),
+fn cmd_status(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
+    let targets = match resolve_targets_context_aware(services, name) {
+        Some(t) => t,
+        None => return ExitCode::FAILURE,
+    };
+
+    const GREEN: &str = "\x1b[32m";
+    const RED: &str = "\x1b[31m";
+    const RESET: &str = "\x1b[0m";
+
+    if name == Some("*") {
+        match serve_running_pid() {
+            Some(pid) => println!("{}●{}\tubermind-serve\tPID {}", GREEN, RESET, pid),
+            None => println!("{}●{}\tubermind-serve\tstopped", RED, RESET),
+        }
     }
 
-    // Then show other services
-    for svc in services.values() {
-        let state = if svc.is_running() {
-            "running"
+    for svc in targets {
+        let (circle, color) = if svc.is_running() {
+            ("●", GREEN)
         } else {
-            "stopped"
+            ("●", RED)
         };
         if let Some(cmd) = &svc.command {
-            println!("{}\t{}\t{}", svc.name, state, cmd);
+            println!("{}{}{}\t{}\t{}", color, circle, RESET, svc.name, cmd);
         } else {
-            println!("{}\t{}\t{}", svc.name, state, svc.dir.display());
+            println!(
+                "{}{}{}\t{}\t{}",
+                color,
+                circle,
+                RESET,
+                svc.name,
+                svc.dir.display()
+            );
         }
     }
     ExitCode::SUCCESS
@@ -1306,7 +1322,7 @@ fn print_usage() {
     eprintln!("{BIN} {v} - manage multiple overmind instances");
     eprintln!();
     eprintln!("usage:");
-    eprintln!("  {BIN} status              show all projects");
+    eprintln!("  {BIN} status [name|'*']   show project status");
     eprintln!("  {BIN} start [name|'*']    start project(s)");
     eprintln!("  {BIN} stop [name|'*']     stop project(s)");
     eprintln!("  {BIN} reload [name|'*']   restart project(s) (picks up Procfile changes)");
@@ -1323,6 +1339,8 @@ fn print_usage() {
     eprintln!("  {BIN} add <name> <dir>    add a project");
     eprintln!();
     eprintln!("examples:");
+    eprintln!("  {BIN} status              show status of current project");
+    eprintln!("  {BIN} status '*'          show status of all projects");
     eprintln!("  {BIN} start               start project in current directory");
     eprintln!("  {BIN} start '*'           start all projects");
     eprintln!("  {BIN} start myapp         start just myapp");
@@ -1334,7 +1352,7 @@ fn print_usage() {
     eprintln!("  {BIN} kill '*'            kill processes in all projects");
     eprintln!("  {BIN} echo                view logs from current project");
     eprintln!("  {BIN} echo '*'            view logs from all projects");
-    eprintln!("  {BIN} status myapp        show myapp's overmind process status");
+    eprintln!("  {BIN} status myapp status show myapp's overmind process status");
     eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
     eprintln!("  {BIN} connect web myapp   same thing, project name last");
     eprintln!();
@@ -1398,13 +1416,15 @@ fn main() -> ExitCode {
         ),
         "status" | "st" => {
             let services = require_services();
-            if let Some(svc) = args.get(1).and_then(|n| services.get(n.as_str())) {
-                let mut passthrough_args = vec!["status".to_string()];
-                passthrough_args.extend_from_slice(&args[2..]);
-                cmd_passthrough(svc, &passthrough_args)
-            } else {
-                cmd_status(&services)
+            let name = args.get(1).map(|s| s.as_str());
+            if name.is_some() && name != Some("*") && args.len() > 2 {
+                if let Some(svc) = services.get(name.unwrap()) {
+                    let mut passthrough_args = vec!["status".to_string()];
+                    passthrough_args.extend_from_slice(&args[2..]);
+                    return cmd_passthrough(svc, &passthrough_args);
+                }
             }
+            cmd_status(&services, name)
         }
         "start" => {
             let s = require_services();
