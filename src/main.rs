@@ -488,6 +488,54 @@ fn resolve_targets<'a>(
     }
 }
 
+fn resolve_targets_context_aware<'a>(
+    services: &'a BTreeMap<String, Service>,
+    name: Option<&str>,
+) -> Option<Vec<&'a Service>> {
+    match name {
+        Some("*") => Some(services.values().collect()),
+        Some(n) => match services.get(n) {
+            Some(svc) => Some(vec![svc]),
+            None => {
+                eprintln!("unknown project: {n}");
+                eprintln!(
+                    "available: {}",
+                    services.keys().cloned().collect::<Vec<_>>().join(", ")
+                );
+                None
+            }
+        },
+        None => {
+            let cwd = match env::current_dir() {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("error: failed to get current directory: {e}");
+                    return None;
+                }
+            };
+
+            for svc in services.values() {
+                if cwd == svc.dir {
+                    return Some(vec![svc]);
+                }
+            }
+
+            eprintln!("error: not in a registered project directory");
+            eprintln!();
+            eprintln!("current directory: {}", cwd.display());
+            eprintln!();
+            eprintln!("to target all projects, run:");
+            eprintln!("  {BIN} <command> '*'");
+            eprintln!();
+            eprintln!("registered projects:");
+            for (name, svc) in services {
+                eprintln!("  {} -> {}", name, svc.dir.display());
+            }
+            None
+        }
+    }
+}
+
 fn get_process_status(svc: &Service, process_name: &str) -> Option<String> {
     let output = Command::new("overmind")
         .args(["status"])
@@ -707,7 +755,7 @@ fn cmd_add(name: Option<&str>, dir: Option<&str>) -> ExitCode {
 }
 
 fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
-    let targets = match resolve_targets(services, name) {
+    let targets = match resolve_targets_context_aware(services, name) {
         Some(t) => t,
         None => return ExitCode::FAILURE,
     };
@@ -741,7 +789,7 @@ fn cmd_start(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCo
 }
 
 fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
-    let targets = match resolve_targets(services, name) {
+    let targets = match resolve_targets_context_aware(services, name) {
         Some(t) => t,
         None => return ExitCode::FAILURE,
     };
@@ -771,7 +819,7 @@ fn cmd_stop(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCod
 }
 
 fn cmd_reload(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitCode {
-    let targets = match resolve_targets(services, name) {
+    let targets = match resolve_targets_context_aware(services, name) {
         Some(t) => t,
         None => return ExitCode::FAILURE,
     };
@@ -1259,9 +1307,9 @@ fn print_usage() {
     eprintln!();
     eprintln!("usage:");
     eprintln!("  {BIN} status              show all projects");
-    eprintln!("  {BIN} start [name]        start project(s)");
-    eprintln!("  {BIN} stop [name]         stop project(s)");
-    eprintln!("  {BIN} reload [name]       restart project(s) (picks up Procfile changes)");
+    eprintln!("  {BIN} start [name|'*']    start project(s)");
+    eprintln!("  {BIN} stop [name|'*']     stop project(s)");
+    eprintln!("  {BIN} reload [name|'*']   restart project(s) (picks up Procfile changes)");
     eprintln!("  {BIN} kill [name]         kill process(es) in project(s)");
     eprintln!("  {BIN} restart [name]      restart process(es) in project(s)");
     eprintln!("  {BIN} echo [name]         view logs from project(s)");
@@ -1275,8 +1323,11 @@ fn print_usage() {
     eprintln!("  {BIN} add <name> <dir>    add a project");
     eprintln!();
     eprintln!("examples:");
-    eprintln!("  {BIN} start               start all projects");
+    eprintln!("  {BIN} start               start project in current directory");
+    eprintln!("  {BIN} start '*'           start all projects");
     eprintln!("  {BIN} start myapp         start just myapp");
+    eprintln!("  {BIN} stop                stop project in current directory");
+    eprintln!("  {BIN} stop '*'            stop all projects");
     eprintln!("  {BIN} kill                kill all processes in all projects");
     eprintln!("  {BIN} kill myapp          kill all processes in myapp");
     eprintln!("  {BIN} echo                view logs from all projects");
