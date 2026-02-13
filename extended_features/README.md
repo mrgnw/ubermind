@@ -13,3 +13,4 @@ This directory documents features added to `ubermind` that extend the functional
 
 - [Action Confirmation](action-confirmation.md): Real-time feedback with dots showing command progress and verifying actions succeeded.
 - [Echo Filtering](echo-filtering.md): Filter logs by service name.
+- [UB Add Shorthand](ub-add-shorthand.md): Add current directory as a service with `ub add` (no args).

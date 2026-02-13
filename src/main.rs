@@ -600,13 +600,73 @@ fn cmd_init() -> ExitCode {
     }
 }
 
-fn cmd_add(name: &str, dir: &str) -> ExitCode {
+fn sanitize_service_name(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn cmd_add(name: Option<&str>, dir: Option<&str>) -> ExitCode {
     let path = projects_config_path();
     if !path.exists() {
         eprintln!("no config file found. run '{BIN} init' first");
         return ExitCode::FAILURE;
     }
-    let expanded = expand_tilde(dir);
+
+    // Handle `uv add` with no arguments - use current directory
+    let (name, dir) = match (name, dir) {
+        (Some(n), Some(d)) => (n.to_string(), d.to_string()),
+        (None, None) => {
+            // Get current directory
+            let cwd = match env::current_dir() {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("failed to get current directory: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let dir_name = match cwd.file_name() {
+                Some(n) => n.to_string_lossy().to_string(),
+                None => {
+                    eprintln!("failed to get directory name");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let sanitized_name = sanitize_service_name(&dir_name);
+            let cwd_str = cwd.display().to_string();
+
+            // Check if Procfile exists, if not create one
+            let procfile_path = cwd.join("Procfile");
+            if !procfile_path.exists() {
+                eprintln!("no Procfile found in current directory");
+                eprintln!("creating {}", procfile_path.display());
+                let default_content =
+                    format!("{sanitized_name}: echo 'configure your command in Procfile'\n");
+                if let Err(e) = fs::write(&procfile_path, default_content) {
+                    eprintln!("failed to create Procfile: {e}");
+                    return ExitCode::FAILURE;
+                }
+                eprintln!("created Procfile - edit it to set your command");
+            }
+
+            (sanitized_name, cwd_str)
+        }
+        _ => {
+            eprintln!("usage: {BIN} add [<name> <dir>]");
+            eprintln!("  {BIN} add              add current directory");
+            eprintln!("  {BIN} add <name> <dir> add specific directory");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let expanded = expand_tilde(&dir);
     if !Path::new(&expanded).exists() {
         eprintln!("warning: directory does not exist: {expanded}");
     }
@@ -1032,7 +1092,7 @@ fn cmd_serve(args: &[String]) -> ExitCode {
             Some(pid) => {
                 println!("ubermind-serve\trunning (PID {pid})");
                 if let Some(log_file) = serve_log_file() {
-                    println!("logs: {}", log_file.display());
+                    println!("  {}", log_file.display());
                 }
                 ExitCode::SUCCESS
             }
@@ -1106,7 +1166,7 @@ fn cmd_serve(args: &[String]) -> ExitCode {
             Ok(_) => {
                 save_serve_state(&log_file);
                 eprintln!(" running");
-                eprintln!("logs: {}", log_file.display());
+                eprintln!("  {}", log_file.display());
                 ExitCode::SUCCESS
             }
             Err(e) => {
@@ -1160,7 +1220,7 @@ fn cmd_serve(args: &[String]) -> ExitCode {
             Ok(_) => {
                 save_serve_state(&log_file);
                 eprintln!("ubermind-serve started in background");
-                eprintln!("logs: {}", log_file.display());
+                eprintln!("  {}", log_file.display());
                 ExitCode::SUCCESS
             }
             Err(e) => {
@@ -1279,13 +1339,10 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         "init" => cmd_init(),
-        "add" => match (args.get(1), args.get(2)) {
-            (Some(name), Some(dir)) => cmd_add(name, dir),
-            _ => {
-                eprintln!("usage: {BIN} add <name> <dir>");
-                ExitCode::FAILURE
-            }
-        },
+        "add" => cmd_add(
+            args.get(1).map(|s| s.as_str()),
+            args.get(2).map(|s| s.as_str()),
+        ),
         "status" | "st" => {
             let services = require_services();
             if let Some(svc) = args.get(1).and_then(|n| services.get(n.as_str())) {

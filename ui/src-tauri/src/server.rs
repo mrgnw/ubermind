@@ -72,52 +72,87 @@ async fn api_service_detail(Path(name): Path<String>) -> impl IntoResponse {
 }
 
 async fn api_start(Path(name): Path<String>) -> impl IntoResponse {
+    eprintln!("[API] start service: {}", name);
     match services::start_service(&name) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
-        ),
+        Ok(msg) => {
+            eprintln!("[API] start service {} -> success: {}", name, msg);
+            (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
+        }
+        Err(e) => {
+            eprintln!("[API] start service {} -> error: {}", name, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
     }
 }
 
 async fn api_stop(Path(name): Path<String>) -> impl IntoResponse {
+    eprintln!("[API] stop service: {}", name);
     match services::stop_service(&name) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
-        ),
+        Ok(msg) => {
+            eprintln!("[API] stop service {} -> success: {}", name, msg);
+            (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
+        }
+        Err(e) => {
+            eprintln!("[API] stop service {} -> error: {}", name, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
     }
 }
 
 async fn api_reload(Path(name): Path<String>) -> impl IntoResponse {
+    eprintln!("[API] reload service: {}", name);
     match services::reload_service(&name) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
-        ),
+        Ok(msg) => {
+            eprintln!("[API] reload service {} -> success: {}", name, msg);
+            (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
+        }
+        Err(e) => {
+            eprintln!("[API] reload service {} -> error: {}", name, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
     }
 }
 
 async fn api_restart_process(Path((name, process)): Path<(String, String)>) -> impl IntoResponse {
+    eprintln!("[API] restart process: {} / {}", name, process);
     match services::restart_process(&name, &process) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
-        ),
+        Ok(msg) => {
+            eprintln!("[API] restart process {} / {} -> success: {}", name, process, msg);
+            (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
+        }
+        Err(e) => {
+            eprintln!("[API] restart process {} / {} -> error: {}", name, process, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
     }
 }
 
 async fn api_kill_process(Path((name, process)): Path<(String, String)>) -> impl IntoResponse {
+    eprintln!("[API] kill process: {} / {}", name, process);
     match services::kill_process(&name, &process) {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e })),
-        ),
+        Ok(msg) => {
+            eprintln!("[API] kill process {} / {} -> success: {}", name, process, msg);
+            (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
+        }
+        Err(e) => {
+            eprintln!("[API] kill process {} / {} -> error: {}", name, process, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e })),
+            )
+        }
     }
 }
 
