@@ -973,17 +973,122 @@ fn cmd_echo(
     exit_code(failed)
 }
 
+fn serve_state_file() -> PathBuf {
+    home_dir().join(".local/share/ubermind/serve-state")
+}
+
+fn serve_log_file() -> Option<PathBuf> {
+    fs::read_to_string(serve_state_file())
+        .ok()
+        .and_then(|s| s.lines().next().map(|l| PathBuf::from(l)))
+}
+
+fn save_serve_state(log_path: &PathBuf) {
+    let _ = fs::write(serve_state_file(), log_path.display().to_string());
+}
+
 fn cmd_serve(args: &[String]) -> ExitCode {
     let serve_bin = "ubermind-serve";
     let daemon = args.iter().any(|a| a == "-d" || a == "--daemon");
     let stop = args.iter().any(|a| a == "--stop");
+    let echo = args.iter().any(|a| a == "--echo");
+    let restart = args.iter().any(|a| a == "--restart");
     let extra: Vec<&str> = args
         .iter()
-        .filter(|a| *a != "-d" && *a != "--daemon" && *a != "--stop")
+        .filter(|a| {
+            !matches!(
+                a.as_str(),
+                "-d" | "--daemon" | "--stop" | "--echo" | "--restart"
+            )
+        })
         .map(|s| s.as_str())
         .collect();
 
-    if stop {
+    if echo {
+        match serve_log_file() {
+            Some(log_file) if log_file.exists() => {
+                let status = Command::new("tail")
+                    .args(["-f", log_file.to_str().unwrap()])
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .status();
+                match status {
+                    Ok(_) => ExitCode::SUCCESS,
+                    Err(e) => {
+                        eprintln!("failed to tail log: {e}");
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+            Some(log_file) => {
+                eprintln!("log file not found: {}", log_file.display());
+                ExitCode::FAILURE
+            }
+            None => {
+                eprintln!("serve not running or no log file recorded");
+                eprintln!("run 'ub serve -d' first");
+                ExitCode::FAILURE
+            }
+        }
+    } else if restart {
+        eprint!("restarting ubermind-serve");
+        let stop_result = Command::new("lsof")
+            .args(["-ti", ":13369", "-sTCP:LISTEN"])
+            .output()
+            .ok()
+            .and_then(|out| {
+                if out.stdout.is_empty() {
+                    None
+                } else {
+                    let pid_str = String::from_utf8_lossy(&out.stdout);
+                    pid_str.trim().parse::<u32>().ok()
+                }
+            })
+            .and_then(|pid| Command::new("kill").arg(pid.to_string()).status().ok());
+
+        if stop_result.is_some() {
+            eprint!(".");
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+
+        let log_dir = home_dir().join(".local/share/ubermind/log");
+        let _ = fs::create_dir_all(&log_dir);
+        let log_file = log_dir.join(format!(
+            "serve-{}.log",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        ));
+
+        let log = match fs::File::create(&log_file) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(" failed to create log file: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+
+        match Command::new(serve_bin)
+            .args(&extra)
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+        {
+            Ok(_) => {
+                save_serve_state(&log_file);
+                eprintln!(" running");
+                eprintln!("logs: {}", log_file.display());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!(" failed to start {serve_bin}: {e}");
+                ExitCode::FAILURE
+            }
+        }
+    } else if stop {
         let output = Command::new("lsof")
             .args(["-ti", ":13369", "-sTCP:LISTEN"])
             .output();
@@ -1041,6 +1146,7 @@ fn cmd_serve(args: &[String]) -> ExitCode {
             .spawn()
         {
             Ok(_) => {
+                save_serve_state(&log_file);
                 eprintln!("ubermind-serve started in background");
                 eprintln!("logs: {}", log_file.display());
                 ExitCode::SUCCESS

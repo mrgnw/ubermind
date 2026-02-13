@@ -5,8 +5,11 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
+use std::env;
+use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::process::Command;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
@@ -37,6 +40,8 @@ pub async fn start(port: u16, static_dir: Option<PathBuf>) {
             get(api_capture_pane),
         )
         .route("/ws/echo/{name}", get(ws_echo))
+        .route("/api/serve/status", get(api_serve_status))
+        .route("/api/serve/logs", get(api_serve_logs))
         .layer(CorsLayer::permissive());
 
     let app = if let Some(dir) = static_dir {
@@ -166,5 +171,68 @@ async fn handle_echo_ws(mut socket: WebSocket, name: String) {
                 }
             }
         }
+    }
+}
+
+fn home_dir() -> PathBuf {
+    PathBuf::from(env::var("HOME").expect("HOME not set"))
+}
+
+fn serve_state_file() -> PathBuf {
+    home_dir().join(".local/share/ubermind/serve-state")
+}
+
+fn serve_log_file() -> Option<PathBuf> {
+    fs::read_to_string(serve_state_file())
+        .ok()
+        .and_then(|s| s.lines().next().map(|l| PathBuf::from(l)))
+}
+
+async fn api_serve_status() -> Json<serde_json::Value> {
+    let output = Command::new("lsof")
+        .args(["-ti", ":13369", "-sTCP:LISTEN"])
+        .output();
+    
+    let running = output
+        .ok()
+        .and_then(|out| {
+            if out.stdout.is_empty() {
+                None
+            } else {
+                let pid_str = String::from_utf8_lossy(&out.stdout);
+                pid_str.trim().parse::<u32>().ok()
+            }
+        })
+        .is_some();
+    
+    let log_file = serve_log_file()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    
+    Json(serde_json::json!({
+        "running": running,
+        "log_file": log_file
+    }))
+}
+
+async fn api_serve_logs() -> impl IntoResponse {
+    match serve_log_file() {
+        Some(log_file) if log_file.exists() => {
+            match fs::read_to_string(&log_file) {
+                Ok(content) => (StatusCode::OK, content),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to read log file: {e}")
+                ),
+            }
+        }
+        Some(log_file) => (
+            StatusCode::NOT_FOUND,
+            format!("log file not found: {}", log_file.display())
+        ),
+        None => (
+            StatusCode::NOT_FOUND,
+            "no log file recorded".to_string()
+        ),
     }
 }
