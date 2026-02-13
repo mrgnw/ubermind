@@ -938,7 +938,7 @@ fn cmd_passthrough_all(
     name: Option<&str>,
     extra: &[String],
 ) -> ExitCode {
-    let targets = match resolve_targets(services, name) {
+    let targets = match resolve_targets_context_aware(services, name) {
         Some(t) => t,
         None => return ExitCode::FAILURE,
     };
@@ -1310,9 +1310,9 @@ fn print_usage() {
     eprintln!("  {BIN} start [name|'*']    start project(s)");
     eprintln!("  {BIN} stop [name|'*']     stop project(s)");
     eprintln!("  {BIN} reload [name|'*']   restart project(s) (picks up Procfile changes)");
-    eprintln!("  {BIN} kill [name]         kill process(es) in project(s)");
-    eprintln!("  {BIN} restart [name]      restart process(es) in project(s)");
-    eprintln!("  {BIN} echo [name]         view logs from project(s)");
+    eprintln!("  {BIN} kill [name|'*']     kill process(es) in project(s)");
+    eprintln!("  {BIN} restart [name|'*']  restart process(es) in project(s)");
+    eprintln!("  {BIN} echo [name|'*']     view logs from project(s)");
     eprintln!("  {BIN} connect [name]      connect to a process in a project");
     eprintln!("  {BIN} <name> <cmd...>     pass command to project's overmind");
     eprintln!("  {BIN} <cmd> <name>        pass command to project's overmind");
@@ -1328,10 +1328,12 @@ fn print_usage() {
     eprintln!("  {BIN} start myapp         start just myapp");
     eprintln!("  {BIN} stop                stop project in current directory");
     eprintln!("  {BIN} stop '*'            stop all projects");
-    eprintln!("  {BIN} kill                kill all processes in all projects");
-    eprintln!("  {BIN} kill myapp          kill all processes in myapp");
-    eprintln!("  {BIN} echo                view logs from all projects");
-    eprintln!("  {BIN} echo myapp          view logs from myapp");
+    eprintln!("  {BIN} restart             restart processes in current project");
+    eprintln!("  {BIN} restart '*'         restart processes in all projects");
+    eprintln!("  {BIN} kill                kill processes in current project");
+    eprintln!("  {BIN} kill '*'            kill processes in all projects");
+    eprintln!("  {BIN} echo                view logs from current project");
+    eprintln!("  {BIN} echo '*'            view logs from all projects");
     eprintln!("  {BIN} status myapp        show myapp's overmind process status");
     eprintln!("  {BIN} myapp connect web   attach to myapp's web process");
     eprintln!("  {BIN} connect web myapp   same thing, project name last");
