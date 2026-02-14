@@ -3,7 +3,10 @@ name = "ubermind-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Daemon process supervisor for ubermind"
+repository.workspace = true
+description = "Daemon process supervisor for ubermind - v2 alpha with native supervision"
+keywords = ["process-manager", "daemon", "supervisor"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "ubermind-daemon"

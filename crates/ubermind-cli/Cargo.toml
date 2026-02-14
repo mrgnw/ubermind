@@ -1,11 +1,12 @@
 [package]
-name = "ubermind-cli"
+name = "ubermind"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CLI for ubermind daemon manager"
+repository.workspace = true
+description = "Process daemon manager with Procfile support - v2 alpha with native supervision"
 readme = "../../README.md"
-keywords = ["process-manager", "daemon", "procfile"]
+keywords = ["process-manager", "daemon", "procfile", "supervisor"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
