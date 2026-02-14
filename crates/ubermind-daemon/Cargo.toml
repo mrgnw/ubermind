@@ -1,0 +1,21 @@
+[package]
+name = "ubermind-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Daemon process supervisor for ubermind"
+
+[[bin]]
+name = "ubermind-daemon"
+path = "src/main.rs"
+
+[dependencies]
+ubermind-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+nix = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
