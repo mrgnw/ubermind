@@ -9,6 +9,7 @@ keywords = ["overmind", "process-manager", "daemon", "procfile"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
 exclude = ["ui/"]
+include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "completions/**/*"]
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/ubermind-v{ version }-{ target }.tar.gz"

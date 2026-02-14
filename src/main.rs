@@ -882,8 +882,8 @@ fn cmd_status(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
 
     if name.is_some_and(|n| is_all_flag(n)) {
         match serve_running_pid() {
-            Some(pid) => println!("{}●{}\tubermind-serve\tPID {}", GREEN, RESET, pid),
-            None => println!("{}●{}\tubermind-serve\tstopped", RED, RESET),
+            Some(pid) => println!(" {}●{}\tubermind-serve\tPID {}", GREEN, RESET, pid),
+            None => println!(" {}●{}\tubermind-serve\tstopped", RED, RESET),
         }
     }
 
@@ -894,10 +894,10 @@ fn cmd_status(services: &BTreeMap<String, Service>, name: Option<&str>) -> ExitC
             ("●", RED)
         };
         if let Some(cmd) = &svc.command {
-            println!("{}{}{}\t{}\t{}", color, circle, RESET, svc.name, cmd);
+            println!(" {}{}{}\t{}\t{}", color, circle, RESET, svc.name, cmd);
         } else {
             println!(
-                "{}{}{}\t{}\t{}",
+                " {}{}{}\t{}\t{}",
                 color,
                 circle,
                 RESET,

@@ -182,6 +182,26 @@ else
 	echo "installed overmind ${om_tag} to ${install_dir}/overmind"
 fi
 
+# --- install shell completions ---
+
+completion_dir="${HOME}/.local/share/ubermind/completions"
+mkdir -p "${completion_dir}"
+
+for shell in bash zsh fish; do
+	completion_url="https://raw.githubusercontent.com/${repo}/${tag}/completions/ub.${shell}"
+	download "${completion_url}" "${completion_dir}/ub.${shell}" 2>/dev/null || true
+done
+
+if [ -f "${completion_dir}/ub.bash" ]; then
+	echo
+	echo "shell completions installed to ${completion_dir}"
+	echo
+	echo "enable tab completion:"
+	echo "  bash: echo 'source ${completion_dir}/ub.bash' >> ~/.bashrc"
+	echo "  zsh:  echo 'fpath=(${completion_dir} \$fpath)' >> ~/.zshrc && echo 'autoload -Uz compinit && compinit' >> ~/.zshrc"
+	echo "  fish: ln -s ${completion_dir}/ub.fish ~/.config/fish/completions/"
+fi
+
 # --- PATH hint ---
 
 if ! echo "${PATH}" | tr ':' '\n' | grep -qx "${install_dir}"; then

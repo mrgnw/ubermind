@@ -22,6 +22,37 @@ cargo binstall ubermind      # prebuilt binary
 
 overmind (and tmux) will be installed automatically if missing.
 
+### Shell completion
+
+Tab completion for commands, project names, and flags:
+
+```sh
+ub start appli<tab>    # completes to: ub start appligator
+ub st<tab>             # completes to: ub status / ub start / ub stop
+ub status <tab>        # shows all project names
+```
+
+**Setup:**
+
+If installed via the install script, completions are in `~/.local/share/ubermind/completions/`.
+
+**Bash:**
+```sh
+echo 'source ~/.local/share/ubermind/completions/ub.bash' >> ~/.bashrc
+```
+
+**Zsh:**
+```sh
+# Add to ~/.zshrc
+fpath=(~/.local/share/ubermind/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
+**Fish:**
+```sh
+ln -s ~/.local/share/ubermind/completions/ub.fish ~/.config/fish/completions/
+```
+
 ## Quick start
 
 ### 1. Initialize ubermind
