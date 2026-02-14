@@ -302,7 +302,7 @@ async fn run_process_loop(
 		let svc = service.clone();
 		let proc_name = process.clone();
 		let cancel_clone = cancel.clone();
-		tokio::spawn(async move {
+		let uptime_handle = tokio::spawn(async move {
 			loop {
 				tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 				if *cancel_clone.borrow() {
@@ -319,60 +319,64 @@ async fn run_process_loop(
 			}
 		});
 
-		tokio::select! {
-			status = child.wait() => {
-				match status {
-					Ok(exit) if exit.success() => {
-						let msg = format!("[ubermind] {}/{} exited cleanly\n", service, process);
-						output.write(msg.as_bytes()).await;
-						update_state(&supervisor, &service, &process, ProcessState::Stopped).await;
-						return;
-					}
-					Ok(exit) => {
-						let code = exit.code().unwrap_or(-1);
-						retry_count += 1;
-
-						if def.restart && retry_count <= def.max_retries {
-							let msg = format!(
-								"[ubermind] {}/{} crashed (exit {}), restarting ({}/{})\n",
-								service, process, code, retry_count, def.max_retries
-							);
-							output.write(msg.as_bytes()).await;
-							update_state(
-								&supervisor,
-								&service,
-								&process,
-								ProcessState::Crashed { exit_code: code, retries: retry_count },
-							)
-							.await;
-							tokio::time::sleep(std::time::Duration::from_secs(def.restart_delay_secs)).await;
-							continue;
-						} else {
-							let msg = format!(
-								"[ubermind] {}/{} failed (exit {}), max retries exceeded\n",
-								service, process, code
-							);
-							output.write(msg.as_bytes()).await;
-							update_state(
-								&supervisor,
-								&service,
-								&process,
-								ProcessState::Failed { exit_code: code },
-							)
-							.await;
-							return;
-						}
-					}
-					Err(e) => {
-						let msg = format!("[ubermind] {}/{} error: {}\n", service, process, e);
-						output.write(msg.as_bytes()).await;
-						update_state(&supervisor, &service, &process, ProcessState::Failed { exit_code: -1 }).await;
-						return;
-					}
-				}
-			}
+		let exit_result = tokio::select! {
+			status = child.wait() => status,
 			_ = cancel.changed() => {
 				let _ = child.kill().await;
+				uptime_handle.abort();
+				return;
+			}
+		};
+
+		// Process exited, stop the uptime updater
+		uptime_handle.abort();
+
+		match exit_result {
+			Ok(exit) if exit.success() => {
+				let msg = format!("[ubermind] {}/{} exited cleanly\n", service, process);
+				output.write(msg.as_bytes()).await;
+				update_state(&supervisor, &service, &process, ProcessState::Stopped).await;
+				return;
+			}
+			Ok(exit) => {
+				let code = exit.code().unwrap_or(-1);
+				retry_count += 1;
+
+				if def.restart && retry_count <= def.max_retries {
+					let msg = format!(
+						"[ubermind] {}/{} crashed (exit {}), restarting ({}/{})\n",
+						service, process, code, retry_count, def.max_retries
+					);
+					output.write(msg.as_bytes()).await;
+					update_state(
+						&supervisor,
+						&service,
+						&process,
+						ProcessState::Crashed { exit_code: code, retries: retry_count },
+					)
+					.await;
+					tokio::time::sleep(std::time::Duration::from_secs(def.restart_delay_secs)).await;
+					continue;
+				} else {
+					let msg = format!(
+						"[ubermind] {}/{} failed (exit {}), max retries exceeded\n",
+						service, process, code
+					);
+					output.write(msg.as_bytes()).await;
+					update_state(
+						&supervisor,
+						&service,
+						&process,
+						ProcessState::Failed { exit_code: code },
+					)
+					.await;
+					return;
+				}
+			}
+			Err(e) => {
+				let msg = format!("[ubermind] {}/{} error: {}\n", service, process, e);
+				output.write(msg.as_bytes()).await;
+				update_state(&supervisor, &service, &process, ProcessState::Failed { exit_code: -1 }).await;
 				return;
 			}
 		}
