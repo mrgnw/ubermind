@@ -269,7 +269,23 @@ fn cmd_status(args: &[String]) {
 	};
 
 	let entries = config::load_service_entries();
-	let filter = resolve_target_names_or_all(args, &entries);
+	
+	// Determine if we should show all or just current project
+	let show_all = !args.is_empty() && (args.len() == 1 && is_all_flag(&args[0]) || args.iter().any(|a| is_all_flag(a)));
+	let current_project = get_current_project(&entries);
+	
+	let filter = if args.is_empty() {
+		// No args: show only current project if in one, otherwise show all
+		if let Some(ref current) = current_project {
+			vec![current.clone()]
+		} else {
+			entries.keys().cloned().collect()
+		}
+	} else if show_all {
+		entries.keys().cloned().collect()
+	} else {
+		resolve_target_names(args, &entries)
+	};
 
 	const GREEN: &str = "\x1b[32m";
 	const RED: &str = "\x1b[31m";
@@ -281,7 +297,30 @@ fn cmd_status(args: &[String]) {
 		status_map.insert(s.name.clone(), s);
 	}
 
-	for name in &filter {
+	// Sort filter so current project comes first
+	let mut sorted_filter = filter.clone();
+	if let Some(ref current) = current_project {
+		sorted_filter.sort_by(|a, b| {
+			if a == current {
+				std::cmp::Ordering::Less
+			} else if b == current {
+				std::cmp::Ordering::Greater
+			} else {
+				a.cmp(b)
+			}
+		});
+	}
+
+	// Calculate column widths for alignment
+	let max_name_width = sorted_filter.iter().map(|n| n.len()).max().unwrap_or(0);
+	let max_proc_name_width = sorted_filter
+		.iter()
+		.filter_map(|name| status_map.get(name))
+		.flat_map(|s| s.processes.iter().map(|p| p.name.len()))
+		.max()
+		.unwrap_or(0);
+
+	for name in &sorted_filter {
 		let entry = entries.get(name);
 		let status = status_map.get(name);
 
@@ -298,23 +337,23 @@ fn cmd_status(args: &[String]) {
 			String::new()
 		};
 
-		println!(" {}●{}\t{}\t{}", color, RESET, name, detail);
+		println!(" {}●{} {:<width$} {}", color, RESET, name, detail, width = max_name_width);
 
 		if let Some(status) = status {
 			for proc in &status.processes {
-				let pstate = match &proc.state {
+				let (pcolor, uptime, pid) = match &proc.state {
 					ProcessState::Running { pid, uptime_secs } => {
-						format!("{}running{} (pid {}, {}s)", GREEN, RESET, pid, uptime_secs)
+						(GREEN, format!("{}s", uptime_secs), format!("{}", pid))
 					}
-					ProcessState::Stopped => format!("{}stopped{}", RED, RESET),
+					ProcessState::Stopped => (RED, "stopped".to_string(), "-".to_string()),
 					ProcessState::Crashed { exit_code, retries } => {
-						format!("crashed (exit {}, retry {})", exit_code, retries)
+						(RED, format!("crashed (exit {}, retry {})", exit_code, retries), "-".to_string())
 					}
 					ProcessState::Failed { exit_code } => {
-						format!("{}failed{} (exit {})", RED, RESET, exit_code)
+						(RED, format!("failed (exit {})", exit_code), "-".to_string())
 					}
 				};
-				println!("   └ {}\t{}", proc.name, pstate);
+				println!("   └ {}●{} {:<pwidth$} {:<8} {}", pcolor, RESET, proc.name, uptime, pid, pwidth = max_proc_name_width);
 			}
 		}
 	}
@@ -590,6 +629,19 @@ fn is_all_flag(s: &str) -> bool {
 	matches!(s, "--all" | "-a" | "all")
 }
 
+fn get_current_project(entries: &BTreeMap<String, ServiceEntry>) -> Option<String> {
+	if let Ok(cwd) = std::env::current_dir() {
+		let cwd = cwd.canonicalize().unwrap_or(cwd);
+		for (name, entry) in entries {
+			let entry_dir = entry.dir.canonicalize().unwrap_or(entry.dir.clone());
+			if cwd == entry_dir {
+				return Some(name.clone());
+			}
+		}
+	}
+	None
+}
+
 fn resolve_target_names(args: &[String], entries: &BTreeMap<String, ServiceEntry>) -> Vec<String> {
 	if args.is_empty() {
 		// Context-aware: check if cwd matches a registered service
@@ -616,17 +668,6 @@ fn resolve_target_names(args: &[String], entries: &BTreeMap<String, ServiceEntry
 	}
 
 	args.iter().filter(|a| !is_all_flag(a)).cloned().collect()
-}
-
-fn resolve_target_names_or_all(
-	args: &[String],
-	entries: &BTreeMap<String, ServiceEntry>,
-) -> Vec<String> {
-	if args.is_empty() {
-		// For status: show all by default
-		return entries.keys().cloned().collect();
-	}
-	resolve_target_names(args, entries)
 }
 
 fn check_alias_hint() {
