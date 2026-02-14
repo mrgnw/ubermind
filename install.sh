@@ -197,9 +197,16 @@ if [ -f "${completion_dir}/ub.bash" ]; then
 	echo "shell completions installed to ${completion_dir}"
 	echo
 	echo "enable tab completion:"
-	echo "  bash: echo 'source ${completion_dir}/ub.bash' >> ~/.bashrc"
-	echo "  zsh:  echo 'fpath=(${completion_dir} \$fpath)' >> ~/.zshrc && echo 'autoload -Uz compinit && compinit' >> ~/.zshrc"
-	echo "  fish: ln -s ${completion_dir}/ub.fish ~/.config/fish/completions/"
+	echo
+	echo "  bash:"
+	echo "    echo 'source ${completion_dir}/ub.bash' >> ~/.bashrc"
+	echo
+	echo "  zsh:"
+	echo "    echo 'fpath=(${completion_dir} \$fpath)' >> ~/.zshrc"
+	echo "    echo 'autoload -Uz compinit && compinit' >> ~/.zshrc"
+	echo
+	echo "  fish:"
+	echo "    ln -s ${completion_dir}/ub.fish ~/.config/fish/completions/"
 fi
 
 # --- PATH hint ---
