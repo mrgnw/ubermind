@@ -13,7 +13,7 @@ _ub_completion() {
 		cword=$COMP_CWORD
 	fi
 
-	local commands="status st start stop reload kill echo connect restart quit run init add serve ui help version"
+	local commands="status st start stop reload kill echo connect restart quit run init add serve ui self help version"
 	local flags="--all -a --daemon -d --stop --echo --restart --status -h --help -V --version"
 
 	local config_path="${XDG_CONFIG_HOME:-$HOME/.config}/ubermind/projects"

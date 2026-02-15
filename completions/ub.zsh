@@ -20,6 +20,7 @@ _ub() {
 		'add:add a project'
 		'serve:start web UI'
 		'ui:start web UI (alias)'
+		'self:self-management commands'
 		'help:show help'
 		'version:show version'
 	)
@@ -64,9 +65,14 @@ _ub() {
 						_path_files -/
 					fi
 					;;
-				serve|ui)
-					_describe -t flags 'flag' flags
-					;;
+			serve|ui)
+				_describe -t flags 'flag' flags
+				;;
+			self)
+				local -a self_commands
+				self_commands=('update:update ubermind to the latest version')
+				_describe -t self_commands 'self command' self_commands
+				;;
 				*)
 					_describe -t projects 'project' projects
 					_describe -t commands 'command' commands

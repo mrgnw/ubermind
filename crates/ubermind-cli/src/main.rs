@@ -1,4 +1,5 @@
 mod launchd;
+mod self_update;
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -35,6 +36,15 @@ fn main() {
 		"daemon" => cmd_daemon(&args[1..]),
 		"serve" => cmd_serve(&args[1..]),
 		"launchd" | "launch" => launchd::cmd_launchd(&args[1..]),
+		"self" => {
+			match args.get(1).map(|s| s.as_str()) {
+				Some("update") => self_update::cmd_self_update(),
+				_ => {
+					eprintln!("usage: ub self update");
+					std::process::exit(1);
+				}
+			}
+		}
 		name => {
 			// Flexible arg ordering: treat first arg as service name
 			let services = config::load_service_entries();
@@ -94,6 +104,7 @@ fn print_usage() {
 	eprintln!("  daemon [start|stop|status]   Manage the daemon");
 	eprintln!("  serve [-d|--stop|--status]   Manage HTTP server for UI");
 	eprintln!("  launchd [command]            Manage macOS launchd agents");
+	eprintln!("  self update                  Update ubermind to the latest version");
 	eprintln!();
 	eprintln!("context-aware: run from a project directory to auto-target it");
 	eprintln!();

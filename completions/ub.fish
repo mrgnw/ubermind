@@ -27,8 +27,11 @@ complete -c ub -n "__fish_use_subcommand" -a "init" -d "create config file"
 complete -c ub -n "__fish_use_subcommand" -a "add" -d "add a project"
 complete -c ub -n "__fish_use_subcommand" -a "serve" -d "start web UI"
 complete -c ub -n "__fish_use_subcommand" -a "ui" -d "start web UI (alias)"
+complete -c ub -n "__fish_use_subcommand" -a "self" -d "self-management commands"
 complete -c ub -n "__fish_use_subcommand" -a "help" -d "show help"
 complete -c ub -n "__fish_use_subcommand" -a "version" -d "show version"
+
+complete -c ub -n "__fish_seen_subcommand_from self" -a "update" -d "update to latest version"
 
 complete -c ub -n "__fish_use_subcommand" -a "(__ub_projects)"
 
@@ -46,7 +49,7 @@ complete -c ub -n "__fish_seen_subcommand_from serve ui" -l status -d "show daem
 complete -c ub -s h -l help -d "show help"
 complete -c ub -s V -l version -d "show version"
 
-complete -c ubermind -n "__fish_use_subcommand" -a "status st start stop reload kill echo connect restart quit run init add serve ui help version"
+complete -c ubermind -n "__fish_use_subcommand" -a "status st start stop reload kill echo connect restart quit run init add serve ui self help version"
 complete -c ubermind -n "__fish_use_subcommand" -a "(__ub_projects)"
 complete -c ubermind -n "__fish_seen_subcommand_from status st start stop reload kill echo connect restart quit run" -a "(__ub_projects)"
 complete -c ubermind -n "__fish_seen_subcommand_from status st start stop reload kill echo connect restart quit run" -l all -d "target all projects"
