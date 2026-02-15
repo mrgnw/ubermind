@@ -15,7 +15,9 @@ pub struct Supervisor {
 }
 
 pub struct ManagedService {
+	#[allow(dead_code)]
 	pub name: String,
+	#[allow(dead_code)]
 	pub dir: std::path::PathBuf,
 	pub processes: HashMap<String, ManagedProcess>,
 }
@@ -24,6 +26,7 @@ pub struct ManagedProcess {
 	pub def: ProcessDef,
 	pub state: ProcessState,
 	pub output: OutputCapture,
+	#[allow(dead_code)]
 	pub started_at: Option<Instant>,
 	pub retry_count: u32,
 	cancel: Option<tokio::sync::watch::Sender<bool>>,
