@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - TBD
+
+### Changed
+
+**Complete rewrite: Native Rust process supervision**
+
+ubermind v0.6 removes all dependencies on overmind and tmux, replacing them with native Rust process management:
+
+- **Native process supervision**: Direct PID-based process management without external dependencies
+- **Auto-restart**: Configurable crash recovery with retry limits
+- **Log management**: Automatic log rotation with timestamped files
+- **Live streaming**: Ring buffers for real-time log output
+- **Unified daemon**: Single daemon handles both process supervision and web UI
+- **No external dependencies**: No longer requires overmind or tmux installation
+
+### Breaking Changes
+
+- Configuration format and APIs may differ from v0.5
+- Migration from v0.5 projects should be straightforward (same Procfile format)
+- Users upgrading should review the new documentation
+
+### For Users of v0.1-v0.5
+
+Earlier versions of ubermind were thin wrappers around [overmind](https://github.com/DarthSim/overmind). Version 0.6 represents a complete architectural shift to native process management while maintaining the same user-facing Procfile format and CLI commands.
+
 ## [0.5.1] - 2025-02-14
 
 ### Added
@@ -54,6 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial stable release
-- Multi-project overmind management
+- Multi-project management with Procfile support
 - Web UI for monitoring and control
-- Auto-installation of dependencies (overmind, tmux)
+- Built on overmind/tmux (later replaced in v0.6)

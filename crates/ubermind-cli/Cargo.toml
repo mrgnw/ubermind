@@ -16,3 +16,4 @@ path = "src/main.rs"
 [dependencies]
 ubermind-core = { workspace = true }
 serde_json = { workspace = true }
+owo-colors = { workspace = true }

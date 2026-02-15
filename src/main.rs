@@ -553,6 +553,25 @@ fn resolve_targets_context_aware<'a>(
     }
 }
 
+fn get_process_names(svc: &Service) -> Vec<String> {
+    let procfile = svc.dir.join("Procfile");
+    let content = match fs::read_to_string(&procfile) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            line.split(':').next().map(|s| s.trim().to_string())
+        })
+        .collect()
+}
+
 fn get_process_status(svc: &Service, process_name: &str) -> Option<String> {
     let output = Command::new("overmind")
         .args(["status"])
@@ -1469,8 +1488,26 @@ fn main() -> ExitCode {
             let services = require_services();
             let (name, extra) = if let Some(svc_name) = args.get(1) {
                 if services.contains_key(svc_name.as_str()) {
+                    // Explicit service name provided
                     (Some(svc_name.as_str()), args[2..].to_vec())
                 } else {
+                    // Not a service name - check if we're in a service directory
+                    // and if the arg is a process name
+                    let cwd = env::current_dir().ok();
+                    let current_svc = cwd.as_ref().and_then(|cwd| {
+                        services.values().find(|svc| &svc.dir == cwd)
+                    });
+                    
+                    if let Some(svc) = current_svc {
+                        let processes = get_process_names(svc);
+                        if processes.contains(&svc_name.to_string()) {
+                            // It's a process name in the current service
+                            let mut passthrough_args = vec![cmd.to_string(), svc_name.to_string()];
+                            passthrough_args.extend_from_slice(&args[2..]);
+                            return cmd_passthrough(svc, &passthrough_args);
+                        }
+                    }
+                    // Not a process name either - treat as extra args
                     (None, args[1..].to_vec())
                 }
             } else {
@@ -1485,6 +1522,14 @@ fn main() -> ExitCode {
                     eprintln!("usage: {BIN} {name} <overmind-command...>");
                     eprintln!("example: {BIN} {name} status");
                     return ExitCode::FAILURE;
+                }
+                // Check if args[1] is an overmind command and args[2] is a process name
+                if args.len() >= 3 && OVERMIND_COMMANDS.contains(&args[1].as_str()) {
+                    let processes = get_process_names(svc);
+                    if processes.contains(&args[2]) {
+                        // ub appligator restart api
+                        return cmd_passthrough(svc, &args[1..]);
+                    }
                 }
                 cmd_passthrough(svc, &args[1..])
             } else if let Some(svc) = args.last().and_then(|n| services.get(n.as_str())) {

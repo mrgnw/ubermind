@@ -3,7 +3,6 @@ set -eu
 
 repo="mrgnw/ubermind"
 bin="ubermind"
-overmind_repo="DarthSim/overmind"
 install_dir="${INSTALL_DIR:-${HOME}/.local/bin}"
 
 detect_target() {
@@ -72,115 +71,6 @@ ln -sf "${install_dir}/${bin}" "${install_dir}/ub"
 
 echo "installed ${install_dir}/${bin}"
 echo "created alias ${install_dir}/ub"
-
-# --- install tmux if missing ---
-
-if command -v tmux >/dev/null 2>&1; then
-	echo "tmux already installed: $(tmux -V 2>&1)"
-else
-	echo
-	echo "tmux not found (required by overmind)"
-
-	os=$(uname -s)
-	case "${os}" in
-		Darwin)
-			if command -v brew >/dev/null 2>&1; then
-				echo "installing tmux via brew..."
-				brew install tmux
-			else
-				echo "please install tmux: brew install tmux"
-				exit 1
-			fi
-			;;
-		Linux)
-			if command -v apt-get >/dev/null 2>&1; then
-				echo "installing tmux via apt-get..."
-				sudo apt-get install -y tmux
-			elif command -v dnf >/dev/null 2>&1; then
-				echo "installing tmux via dnf..."
-				sudo dnf install -y tmux
-			elif command -v yum >/dev/null 2>&1; then
-				echo "installing tmux via yum..."
-				sudo yum install -y tmux
-			elif command -v apk >/dev/null 2>&1; then
-				echo "installing tmux via apk..."
-				apk add tmux
-			else
-				echo "please install tmux manually"
-				exit 1
-			fi
-			;;
-		*)
-			echo "please install tmux manually"
-			exit 1
-			;;
-	esac
-
-	if command -v tmux >/dev/null 2>&1; then
-		echo "tmux installed: $(tmux -V 2>&1)"
-	else
-		echo "tmux installation failed"
-		exit 1
-	fi
-fi
-
-# --- install overmind if missing ---
-
-if command -v overmind >/dev/null 2>&1; then
-	echo "overmind already installed: $(overmind --version 2>&1 | head -1)"
-else
-	echo
-	echo "installing overmind..."
-
-	os=$(uname -s)
-	arch=$(uname -m)
-
-	case "${os}" in
-		Darwin) om_os="macos" ;;
-		Linux)  om_os="linux" ;;
-		*)
-			echo "unsupported OS for overmind: ${os}" >&2
-			echo "install manually: https://github.com/${overmind_repo}"
-			exit 0
-			;;
-	esac
-
-	case "${arch}" in
-		x86_64|amd64)  om_arch="amd64" ;;
-		arm64|aarch64) om_arch="arm64" ;;
-		*)
-			echo "unsupported arch for overmind: ${arch}" >&2
-			echo "install manually: https://github.com/${overmind_repo}"
-			exit 0
-			;;
-	esac
-
-	if command -v curl >/dev/null 2>&1; then
-		om_tag=$(curl -fsSL "https://api.github.com/repos/${overmind_repo}/releases/latest" | grep '"tag_name"' | sed 's/.*"\(.*\)".*/\1/')
-	elif command -v wget >/dev/null 2>&1; then
-		om_tag=$(wget -qO- "https://api.github.com/repos/${overmind_repo}/releases/latest" | grep '"tag_name"' | sed 's/.*"\(.*\)".*/\1/')
-	fi
-	om_tag="${om_tag:-v2.5.1}"
-
-	om_url="https://github.com/${overmind_repo}/releases/download/${om_tag}/overmind-${om_tag}-${om_os}-${om_arch}.gz"
-	echo "downloading ${om_url}"
-
-	om_tmp=$(mktemp)
-	trap 'rm -f "${om_tmp}"' EXIT
-
-	download "${om_url}" "${om_tmp}"
-	gunzip -f "${om_tmp}"
-	# gunzip strips .gz, but mktemp has no extension so the output is at the same path
-	# handle both cases
-	if [ -f "${om_tmp}" ]; then
-		mv "${om_tmp}" "${install_dir}/overmind"
-	else
-		mv "${om_tmp%.gz}" "${install_dir}/overmind" 2>/dev/null || mv "${om_tmp}" "${install_dir}/overmind"
-	fi
-	chmod +x "${install_dir}/overmind"
-
-	echo "installed overmind ${om_tag} to ${install_dir}/overmind"
-fi
 
 # --- install shell completions ---
 

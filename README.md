@@ -4,7 +4,9 @@
 
 # ubermind
 
-Manage multiple [overmind](https://github.com/DarthSim/overmind) instances across projects. Each project keeps its own `Procfile` and runs its own overmind daemon. ubermind orchestrates them all from anywhere.
+A native Rust process supervisor for managing multiple projects. Each project keeps its own `Procfile`, and ubermind orchestrates them all from anywhere with auto-restart, log management, and live monitoring.
+
+Inspired by [overmind](https://github.com/DarthSim/overmind) and [foreman](https://github.com/ddollar/foreman).
 
 ## Install
 
@@ -19,8 +21,6 @@ gah install mrgnw/ubermind
 cargo install ubermind       # from source
 cargo binstall ubermind      # prebuilt binary
 ```
-
-overmind (and tmux) will be installed automatically if missing.
 
 ### Shell completion
 
@@ -74,7 +74,7 @@ api: python server.py
 worker: ruby worker.rb
 ```
 
-This is the standard [Procfile](https://devcenter.heroku.com/articles/procfile) format used by overmind, foreman, and others. Each line becomes a named process that ubermind (via overmind) will manage.
+This is the standard [Procfile](https://devcenter.heroku.com/articles/procfile) format. Each line becomes a named process that ubermind will manage.
 
 ### 3. Register your project with ubermind
 
@@ -106,7 +106,6 @@ frontend: ~/dev/frontend
 **Commands file** (`~/.config/ubermind/commands`) — optional, defines standalone commands in Procfile format:
 
 ```
-# Each line is a standalone command that runs as its own overmind instance
 tunnel: ssh -N -L 5432:localhost:5432 prod-server
 sync: watchman-wait . --max-events 0 -p '*.json' | xargs ./sync.sh
 ```
@@ -116,7 +115,7 @@ Each project directory has its own **Procfile** that defines what processes to r
 ```
 # ~/dev/myapp/Procfile
 web: npm run dev
-db: docker compose up postgres
+api: python server.py
 
 # ~/dev/api-server/Procfile
 server: cargo run
@@ -126,9 +125,9 @@ worker: cargo run --bin worker
 dev: pnpm dev
 ```
 
-When you run `ubermind start myapp`, ubermind looks up `myapp` → `~/dev/myapp`, then starts overmind in that directory using its `Procfile`. Each project gets its own isolated overmind instance — one project crashing won't affect the others.
+When you run `ubermind start myapp`, ubermind looks up `myapp` → `~/dev/myapp`, then starts its daemon in that directory using the `Procfile`. Each project gets its own isolated supervisor instance — one project crashing won't affect the others.
 
-Standalone commands from the `commands` file are auto-expanded into generated Procfiles under `~/.config/ubermind/_commands/` so overmind can manage them the same way.
+Standalone commands from the `commands` file are auto-expanded into generated Procfiles under `~/.config/ubermind/_commands/`.
 
 ## Usage
 
@@ -150,7 +149,7 @@ ubermind serve [-p PORT]     # start web UI server (default port: 13369)
 Pass any overmind command to a specific project:
 
 ```
-ubermind status myapp        # overmind status within myapp
+ubermind status myapp        # show status of myapp
 ubermind echo myapp          # view myapp's logs
 ubermind myapp connect web   # attach to myapp's web process
 ubermind connect web myapp   # same thing, project name last
@@ -180,7 +179,6 @@ frontend: ~/dev/frontend
 Optionally, define standalone commands in `~/.config/ubermind/commands`:
 
 ```
-# These run as individual overmind instances without a project directory
 tunnel: ssh -N -L 5432:localhost:5432 prod-server
 sync: watchman-wait . --max-events 0 -p '*.json' | xargs ./sync.sh
 ```
@@ -189,17 +187,22 @@ See [tmux cheatsheet](tmux.md) for navigating connected sessions (scrolling, cop
 
 ## How it works
 
-Each project directory gets its own independent overmind instance with its own `.overmind.sock`. ubermind knows where each project lives and dispatches commands to the right overmind in the right directory.
+ubermind uses native Rust process supervision with:
+- Direct PID-based process management
+- Auto-restart on crash with configurable retry limits
+- Log files with rotation (stored in `~/.local/share/ubermind/log/`)
+- Live log streaming via ring buffers
+- Unix socket communication for CLI commands
+- HTTP/WebSocket API for the web UI
+
+Each project directory gets its own independent supervisor instance. ubermind knows where each project lives and dispatches commands to the right supervisor.
 
 Standalone commands are auto-expanded into generated Procfiles under `~/.config/ubermind/_commands/` (an internal directory that you shouldn't edit directly).
-
-- `start`/`stop`/`reload` are ubermind-level commands that manage the overmind daemon lifecycle (daemonized start, graceful quit, socket cleanup).
-- Everything else is passed through directly to the project's overmind.
 
 ## License
 
 MIT
 
-## Extended Features
+## History
 
-See [extended_features/README.md](extended_features/README.md) for features added on top of standard overmind functionality.
+ubermind v0.6+ uses native Rust process management. Earlier versions (v0.1-v0.5) were thin wrappers around [overmind](https://github.com/DarthSim/overmind) and tmux.

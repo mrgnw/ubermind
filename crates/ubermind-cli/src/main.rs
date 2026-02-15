@@ -6,6 +6,7 @@ use std::process::Command;
 use ubermind_core::config::{self, ServiceEntry};
 use ubermind_core::protocol::{self, Request, Response};
 use ubermind_core::types::*;
+use owo_colors::OwoColorize;
 
 fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();
@@ -28,6 +29,7 @@ fn main() {
 		"restart" => cmd_restart(&args[1..]),
 		"logs" => cmd_logs(&args[1..]),
 		"echo" => cmd_echo(&args[1..]),
+		"show" => cmd_show(&args[1..]),
 		"daemon" => cmd_daemon(&args[1..]),
 		"serve" => cmd_serve(&args[1..]),
 		name => {
@@ -41,6 +43,7 @@ fn main() {
 					"status" | "st" => cmd_status(&[args[0].clone()]),
 					"logs" => cmd_logs(&args),
 					"echo" => cmd_echo(&args),
+					"show" => cmd_show(&args),
 					"restart" => {
 						if args.len() > 2 {
 							cmd_restart(&[args[0].clone(), args[2].clone()]);
@@ -75,19 +78,28 @@ fn print_usage() {
 	eprintln!("usage: ub [command] [service] [options]");
 	eprintln!();
 	eprintln!("commands:");
-	eprintln!("  status [name|--all]       Show service status");
-	eprintln!("  start [name|--all]        Start service(s)");
-	eprintln!("  stop [name|--all]         Stop service(s)");
-	eprintln!("  reload [name|--all]       Reload service(s) (stop + start)");
-	eprintln!("  restart <name> [process]  Restart a process within a service");
-	eprintln!("  logs <name> [process]     Tail log files");
-	eprintln!("  echo <name> [process]     Live output stream");
-	eprintln!("  add [name] [dir]          Register a project");
-	eprintln!("  init                      Create config files");
-	eprintln!("  daemon [start|stop|status] Manage the daemon");
-	eprintln!("  serve [-d|--stop|--status] Manage HTTP server for UI");
+	eprintln!("  status [name|--all]          Show service status");
+	eprintln!("  start [name|--all]           Start service(s)");
+	eprintln!("  stop [name|--all]            Stop service(s)");
+	eprintln!("  reload [name|--all]          Reload service(s) (stop + start)");
+	eprintln!("  restart [name] [process]     Restart a process within a service");
+	eprintln!("  logs <name> [process]        Tail log files");
+	eprintln!("  echo <name> [process]        Live output stream");
+	eprintln!("  show [name] [process]        Show Procfile or process command");
+	eprintln!("  add [name] [dir]             Register a project");
+	eprintln!("  init                         Create config files");
+	eprintln!("  daemon [start|stop|status]   Manage the daemon");
+	eprintln!("  serve [-d|--stop|--status]   Manage HTTP server for UI");
 	eprintln!();
 	eprintln!("context-aware: run from a project directory to auto-target it");
+	eprintln!();
+	eprintln!("examples:");
+	eprintln!("  ub restart api               (from within project) restart 'api' process");
+	eprintln!("  ub restart appligator api    (from anywhere) restart appligator's 'api' process");
+	eprintln!("  ub show                      (from within project) show Procfile");
+	eprintln!("  ub show api                  (from within project) show 'api' command");
+	eprintln!("  ub show appligator           show appligator's Procfile");
+	eprintln!("  ub show appligator api       show appligator's 'api' command");
 }
 
 // --- Config management (no daemon needed) ---
@@ -287,10 +299,6 @@ fn cmd_status(args: &[String]) {
 		resolve_target_names(args, &entries)
 	};
 
-	const GREEN: &str = "\x1b[32m";
-	const RED: &str = "\x1b[31m";
-	const RESET: &str = "\x1b[0m";
-
 	let mut status_map: std::collections::HashMap<String, &ServiceStatus> =
 		std::collections::HashMap::new();
 	for s in &services {
@@ -325,7 +333,6 @@ fn cmd_status(args: &[String]) {
 		let status = status_map.get(name);
 
 		let running = status.map(|s| s.is_running()).unwrap_or(false);
-		let color = if running { GREEN } else { RED };
 
 		let detail = if let Some(entry) = entry {
 			if let Some(ref cmd) = entry.command {
@@ -337,23 +344,24 @@ fn cmd_status(args: &[String]) {
 			String::new()
 		};
 
-		println!(" {}●{} {:<width$} {}", color, RESET, name, detail, width = max_name_width);
+		let circle = if running { "●".green().to_string() } else { "●".red().to_string() };
+		println!(" {} {:<width$} {}", circle, name, detail, width = max_name_width);
 
 		if let Some(status) = status {
 			for proc in &status.processes {
-				let (pcolor, uptime, pid) = match &proc.state {
+				let (circle, uptime, pid) = match &proc.state {
 					ProcessState::Running { pid, uptime_secs } => {
-						(GREEN, format!("{}s", uptime_secs), format!("{}", pid))
+						("●".green().to_string(), format!("{}s", uptime_secs), format!("{}", pid))
 					}
-					ProcessState::Stopped => (RED, "stopped".to_string(), "-".to_string()),
+					ProcessState::Stopped => ("●".red().to_string(), "stopped".to_string(), "-".to_string()),
 					ProcessState::Crashed { exit_code, retries } => {
-						(RED, format!("crashed (exit {}, retry {})", exit_code, retries), "-".to_string())
+						("●".red().to_string(), format!("crashed (exit {}, retry {})", exit_code, retries), "-".to_string())
 					}
 					ProcessState::Failed { exit_code } => {
-						(RED, format!("failed (exit {})", exit_code), "-".to_string())
+						("●".red().to_string(), format!("failed (exit {})", exit_code), "-".to_string())
 					}
 				};
-				println!("   └ {}●{} {:<pwidth$} {:<8} {}", pcolor, RESET, proc.name, uptime, pid, pwidth = max_proc_name_width);
+				println!("   └ {} {:<pwidth$} {:<8} {}", circle, proc.name, uptime, pid, pwidth = max_proc_name_width);
 			}
 		}
 	}
@@ -442,17 +450,40 @@ fn cmd_reload(args: &[String]) {
 }
 
 fn cmd_restart(args: &[String]) {
-	if args.is_empty() {
-		eprintln!("usage: ub restart <service> [process]");
-		std::process::exit(1);
-	}
+	let entries = config::load_service_entries();
+	
+	// Context-aware: if no args or first arg is not a service, check if we're in a project
+	let (service, process) = if args.is_empty() {
+		// No args - reload current service
+		if let Some(current) = get_current_project(&entries) {
+			return cmd_reload(&[current]);
+		} else {
+			eprintln!("usage: ub restart <service> [process]");
+			eprintln!("or run from a registered project directory");
+			std::process::exit(1);
+		}
+	} else if args.len() == 1 {
+		// One arg - could be service name or process name in current service
+		if entries.contains_key(&args[0]) {
+			// It's a service name - reload it
+			return cmd_reload(&[args[0].clone()]);
+		} else if let Some(current) = get_current_project(&entries) {
+			// Treat arg as process name in current service
+			(current, Some(args[0].clone()))
+		} else {
+			eprintln!("unknown service: {}", args[0]);
+			eprintln!("registered services: {}", entries.keys().cloned().collect::<Vec<_>>().join(", "));
+			std::process::exit(1);
+		}
+	} else {
+		// Two or more args - first is service, second is process
+		(args[0].clone(), Some(args[1].clone()))
+	};
 
-	let service = &args[0];
-	if args.len() >= 2 {
-		let process = &args[1];
+	if let Some(process_name) = process {
 		let response = send_request(&Request::Restart {
 			service: service.clone(),
-			process: process.clone(),
+			process: process_name.clone(),
 		});
 		match response {
 			Response::Ok { message } => {
@@ -550,6 +581,111 @@ fn cmd_echo(args: &[String]) {
 			std::process::exit(1);
 		}
 		_ => {}
+	}
+}
+
+fn cmd_show(args: &[String]) {
+	let entries = config::load_service_entries();
+	
+	// Handle "ub appligator show api" - skip "show" if it's in args[1]
+	let filtered_args: Vec<String> = if args.len() >= 2 && args[1] == "show" {
+		// Skip the "show" command: ["appligator", "show", "api"] -> ["appligator", "api"]
+		let mut new_args = vec![args[0].clone()];
+		new_args.extend_from_slice(&args[2..]);
+		new_args
+	} else {
+		args.to_vec()
+	};
+	
+	// Context-aware: if no args, show current service's Procfile
+	let (service_name, process_name) = if filtered_args.is_empty() {
+		if let Some(current) = get_current_project(&entries) {
+			(current, None)
+		} else {
+			eprintln!("usage: ub show [service] [process]");
+			eprintln!("or run from a registered project directory");
+			std::process::exit(1);
+		}
+	} else if filtered_args.len() == 1 {
+		// One arg - could be service name or process name in current service
+		if entries.contains_key(&filtered_args[0]) {
+			// It's a service name - show its Procfile
+			(filtered_args[0].clone(), None)
+		} else if let Some(current) = get_current_project(&entries) {
+			// Treat arg as process name in current service
+			(current, Some(filtered_args[0].clone()))
+		} else {
+			eprintln!("unknown service: {}", filtered_args[0]);
+			eprintln!("registered services: {}", entries.keys().cloned().collect::<Vec<_>>().join(", "));
+			std::process::exit(1);
+		}
+	} else {
+		// Two or more args - first is service, second is process
+		(filtered_args[0].clone(), Some(filtered_args[1].clone()))
+	};
+
+	let service_entry = match entries.get(&service_name) {
+		Some(entry) => entry,
+		None => {
+			eprintln!("unknown service: {}", service_name);
+			std::process::exit(1);
+		}
+	};
+
+	let procfile_path = service_entry.dir.join("Procfile");
+	
+	if !procfile_path.exists() {
+		eprintln!("Procfile not found: {}", procfile_path.display());
+		std::process::exit(1);
+	}
+
+	let content = match std::fs::read_to_string(&procfile_path) {
+		Ok(c) => c,
+		Err(e) => {
+			eprintln!("failed to read Procfile: {}", e);
+			std::process::exit(1);
+		}
+	};
+
+	if let Some(proc_name) = process_name {
+		// Show specific process command
+		let mut found = false;
+		for line in content.lines() {
+			let line = line.trim();
+			if line.is_empty() || line.starts_with('#') {
+				continue;
+			}
+			if let Some((name, cmd)) = line.split_once(':') {
+				if name.trim() == proc_name {
+					println!("{}", cmd.trim());
+					found = true;
+					break;
+				}
+			}
+		}
+		if !found {
+			eprintln!("process '{}' not found in {}", proc_name, procfile_path.display());
+			std::process::exit(1);
+		}
+	} else {
+		// Show entire Procfile with syntax highlighting
+		println!("{}", procfile_path.display().dimmed());
+		println!();
+		for line in content.lines() {
+			let line_trimmed = line.trim();
+			if line_trimmed.is_empty() {
+				println!();
+			} else if line_trimmed.starts_with('#') {
+				// Comments in dim
+				println!("{}", line.dimmed());
+			} else if let Some((name, cmd)) = line.split_once(':') {
+				// Process name in cyan, command in default color
+				println!("{}:{}", name.cyan(), cmd);
+			} else {
+				// Fallback for malformed lines
+				println!("{}", line);
+			}
+		}
 	}
 }
 
