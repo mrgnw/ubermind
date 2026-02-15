@@ -2,10 +2,11 @@ mod launchd;
 mod self_update;
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Instant;
 use ubermind_core::config::{self, ServiceEntry};
 use ubermind_core::protocol::{self, Request, Response};
 use ubermind_core::types::*;
@@ -291,121 +292,11 @@ fn send_request(request: &Request) -> Response {
 // --- Commands that talk to daemon ---
 
 fn cmd_status(args: &[String]) {
-	let response = send_request(&Request::Status);
-	let services = match response {
-		Response::Status { services } => services,
-		Response::Error { message } => {
-			eprintln!("error: {}", message);
-			std::process::exit(1);
-		}
-		_ => {
-			eprintln!("unexpected response from daemon");
-			std::process::exit(1);
-		}
-	};
-
-	let entries = config::load_service_entries();
-
-	// Check for dot syntax targeting a specific process (e.g., "matrix.automation" or ".automation")
-	let (process_filter, resolved_args) = if let Some(first) = args.first() {
-		let (svc, proc) = resolve_dot_target(first, &entries);
-		let rest: Vec<String> = std::iter::once(svc).chain(args[1..].iter().cloned()).collect();
-		(proc, rest)
+	let (watch, rest) = parse_watch_opts(args);
+	if watch.enabled {
+		watch_status(&rest, &watch);
 	} else {
-		(None, args.to_vec())
-	};
-
-	// Determine if we should show all or just current project
-	let show_all = !resolved_args.is_empty() && (resolved_args.len() == 1 && is_all_flag(&resolved_args[0]) || resolved_args.iter().any(|a| is_all_flag(a)));
-	let current_project = get_current_project(&entries);
-	
-	let filter = if resolved_args.is_empty() {
-		// No args: show only current project if in one, otherwise show all
-		if let Some(ref current) = current_project {
-			vec![current.clone()]
-		} else {
-			entries.keys().cloned().collect()
-		}
-	} else if show_all {
-		entries.keys().cloned().collect()
-	} else {
-		resolve_target_names(&resolved_args, &entries)
-	};
-
-	let mut status_map: std::collections::HashMap<String, &ServiceStatus> =
-		std::collections::HashMap::new();
-	for s in &services {
-		status_map.insert(s.name.clone(), s);
-	}
-
-	// Sort filter so current project comes first
-	let mut sorted_filter = filter.clone();
-	if let Some(ref current) = current_project {
-		sorted_filter.sort_by(|a, b| {
-			if a == current {
-				std::cmp::Ordering::Less
-			} else if b == current {
-				std::cmp::Ordering::Greater
-			} else {
-				a.cmp(b)
-			}
-		});
-	}
-
-	// If targeting a single process via dot syntax, show just that process
-	if let Some(ref proc_name) = process_filter {
-		for name in &sorted_filter {
-			if let Some(status) = status_map.get(name) {
-				for proc in &status.processes {
-					if proc.name == *proc_name {
-						print_process_line(proc, proc.name.len());
-						return;
-					}
-				}
-				eprintln!("process '{}' not found in {}", proc_name, name);
-				std::process::exit(1);
-			} else {
-				eprintln!("service '{}' not running", name);
-				std::process::exit(1);
-			}
-		}
-		return;
-	}
-
-	// Calculate column widths for alignment
-	let max_name_width = sorted_filter.iter().map(|n| n.len()).max().unwrap_or(0);
-	let max_proc_name_width = sorted_filter
-		.iter()
-		.filter_map(|name| status_map.get(name))
-		.flat_map(|s| s.processes.iter().map(|p| p.name.len()))
-		.max()
-		.unwrap_or(0);
-
-	for name in &sorted_filter {
-		let entry = entries.get(name);
-		let status = status_map.get(name);
-
-		let running = status.map(|s| s.is_running()).unwrap_or(false);
-
-		let detail = if let Some(entry) = entry {
-			if let Some(ref cmd) = entry.command {
-				cmd.clone()
-			} else {
-				entry.dir.to_string_lossy().to_string()
-			}
-		} else {
-			String::new()
-		};
-
-		let circle = if running { "●".green().to_string() } else { "●".red().to_string() };
-		println!(" {} {:<width$} {}", circle, name, detail, width = max_name_width);
-
-		if let Some(status) = status {
-			for proc in &status.processes {
-				print!("   └ ");
-				print_process_line(proc, max_proc_name_width);
-			}
-		}
+		render_status(&rest);
 	}
 }
 
@@ -428,8 +319,9 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 }
 
 fn cmd_start(args: &[String]) {
+	let (watch, rest) = parse_watch_opts(args);
 	let entries = config::load_service_entries();
-	let names = resolve_target_names(args, &entries);
+	let names = resolve_target_names(&rest, &entries);
 
 	if names.is_empty() {
 		eprintln!("no services to start");
@@ -445,7 +337,11 @@ fn cmd_start(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			cmd_status(&names);
+			if watch.enabled {
+				watch_status(&names, &watch);
+			} else {
+				render_status(&names);
+			}
 		}
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
@@ -482,8 +378,9 @@ fn cmd_stop(args: &[String]) {
 }
 
 fn cmd_reload(args: &[String]) {
+	let (watch, rest) = parse_watch_opts(args);
 	let entries = config::load_service_entries();
-	let names = resolve_target_names(args, &entries);
+	let names = resolve_target_names(&rest, &entries);
 
 	if names.is_empty() {
 		eprintln!("no services to reload");
@@ -499,7 +396,11 @@ fn cmd_reload(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			cmd_status(&names);
+			if watch.enabled {
+				watch_status(&names, &watch);
+			} else {
+				render_status(&names);
+			}
 		}
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
@@ -510,34 +411,52 @@ fn cmd_reload(args: &[String]) {
 }
 
 fn cmd_restart(args: &[String]) {
+	let (watch, rest) = parse_watch_opts(args);
 	let entries = config::load_service_entries();
-	
+
+	// Reconstruct watch args to pass through to cmd_reload
+	let mut reload_extra: Vec<String> = Vec::new();
+	if watch.enabled {
+		reload_extra.push("--watch".to_string());
+		if let Some(d) = watch.duration {
+			reload_extra.push(d.to_string());
+		}
+		if watch.interval != 1 {
+			reload_extra.push("--watch-interval".to_string());
+			reload_extra.push(watch.interval.to_string());
+		}
+	}
+
 	// Context-aware: if no args or first arg is not a service, check if we're in a project
-	let (service, process) = if args.is_empty() {
+	let (service, process) = if rest.is_empty() {
 		// No args - reload current service
 		if let Some(current) = get_current_project(&entries) {
-			return cmd_reload(&[current]);
+			let mut reload_args = vec![current];
+			reload_args.extend(reload_extra);
+			return cmd_reload(&reload_args);
 		} else {
 			eprintln!("usage: ub restart <service> [process]");
 			eprintln!("or run from a registered project directory");
 			std::process::exit(1);
 		}
-	} else if args.len() == 1 {
+	} else if rest.len() == 1 {
 		// One arg - could be service name or process name in current service
-		if entries.contains_key(&args[0]) {
+		if entries.contains_key(&rest[0]) {
 			// It's a service name - reload it
-			return cmd_reload(&[args[0].clone()]);
+			let mut reload_args = vec![rest[0].clone()];
+			reload_args.extend(reload_extra);
+			return cmd_reload(&reload_args);
 		} else if let Some(current) = get_current_project(&entries) {
 			// Treat arg as process name in current service
-			(current, Some(args[0].clone()))
+			(current, Some(rest[0].clone()))
 		} else {
-			eprintln!("unknown service: {}", args[0]);
+			eprintln!("unknown service: {}", rest[0]);
 			eprintln!("registered services: {}", entries.keys().cloned().collect::<Vec<_>>().join(", "));
 			std::process::exit(1);
 		}
 	} else {
 		// Two or more args - first is service, second is process
-		(args[0].clone(), Some(args[1].clone()))
+		(rest[0].clone(), Some(rest[1].clone()))
 	};
 
 	if let Some(process_name) = process {
@@ -550,6 +469,10 @@ fn cmd_restart(args: &[String]) {
 				if let Some(msg) = message {
 					eprintln!("{}", msg);
 				}
+				if watch.enabled {
+					std::thread::sleep(std::time::Duration::from_millis(500));
+					watch_status(&[service], &watch);
+				}
 			}
 			Response::Error { message } => {
 				eprintln!("error: {}", message);
@@ -558,7 +481,9 @@ fn cmd_restart(args: &[String]) {
 			_ => {}
 		}
 	} else {
-		cmd_reload(&[service.clone()]);
+		let mut reload_args = vec![service];
+		reload_args.extend(reload_extra);
+		cmd_reload(&reload_args);
 	}
 }
 
@@ -872,6 +797,207 @@ fn cmd_serve(args: &[String]) {
 			std::process::exit(1);
 		});
 		std::process::exit(status.code().unwrap_or(1));
+	}
+}
+
+// --- Watch support ---
+
+struct WatchOpts {
+	/// Duration to watch in seconds. None = indefinite.
+	duration: Option<u64>,
+	/// Refresh interval in seconds.
+	interval: u64,
+	/// Whether --watch was specified.
+	enabled: bool,
+}
+
+/// Parse --watch / -w and --watch-interval from args, returning the opts and remaining args.
+fn parse_watch_opts(args: &[String]) -> (WatchOpts, Vec<String>) {
+	let mut opts = WatchOpts {
+		duration: None,
+		interval: 1,
+		enabled: false,
+	};
+	let mut rest = Vec::new();
+	let mut i = 0;
+	while i < args.len() {
+		match args[i].as_str() {
+			"--watch" | "-w" => {
+				opts.enabled = true;
+				// Next arg might be a number (duration)
+				if i + 1 < args.len() {
+					if let Ok(n) = args[i + 1].parse::<u64>() {
+						opts.duration = Some(n);
+						i += 1;
+					}
+				}
+				// If no number follows, default duration
+				if opts.duration.is_none() {
+					opts.duration = Some(4);
+				}
+			}
+			"--watch-interval" => {
+				if i + 1 < args.len() {
+					if let Ok(n) = args[i + 1].parse::<u64>() {
+						opts.interval = n.max(1);
+						i += 1;
+					}
+				}
+			}
+			_ => rest.push(args[i].clone()),
+		}
+		i += 1;
+	}
+	(opts, rest)
+}
+
+/// Fetch current status from daemon.
+fn fetch_status() -> Vec<ServiceStatus> {
+	let response = send_request(&Request::Status);
+	match response {
+		Response::Status { services } => services,
+		Response::Error { message } => {
+			eprintln!("error: {}", message);
+			std::process::exit(1);
+		}
+		_ => {
+			eprintln!("unexpected response from daemon");
+			std::process::exit(1);
+		}
+	}
+}
+
+/// Render status to stdout. Returns the number of lines printed.
+fn render_status(args: &[String]) -> usize {
+	let services = fetch_status();
+	let entries = config::load_service_entries();
+
+	// Check for dot syntax targeting a specific process
+	let (process_filter, resolved_args) = if let Some(first) = args.first() {
+		let (svc, proc) = resolve_dot_target(first, &entries);
+		let rest: Vec<String> = std::iter::once(svc).chain(args[1..].iter().cloned()).collect();
+		(proc, rest)
+	} else {
+		(None, args.to_vec())
+	};
+
+	let show_all = !resolved_args.is_empty() && (resolved_args.len() == 1 && is_all_flag(&resolved_args[0]) || resolved_args.iter().any(|a| is_all_flag(a)));
+	let current_project = get_current_project(&entries);
+
+	let filter = if resolved_args.is_empty() {
+		if let Some(ref current) = current_project {
+			vec![current.clone()]
+		} else {
+			entries.keys().cloned().collect()
+		}
+	} else if show_all {
+		entries.keys().cloned().collect()
+	} else {
+		resolve_target_names(&resolved_args, &entries)
+	};
+
+	let mut status_map: std::collections::HashMap<String, &ServiceStatus> =
+		std::collections::HashMap::new();
+	for s in &services {
+		status_map.insert(s.name.clone(), s);
+	}
+
+	let mut sorted_filter = filter.clone();
+	if let Some(ref current) = current_project {
+		sorted_filter.sort_by(|a, b| {
+			if a == current {
+				std::cmp::Ordering::Less
+			} else if b == current {
+				std::cmp::Ordering::Greater
+			} else {
+				a.cmp(b)
+			}
+		});
+	}
+
+	// Single process via dot syntax
+	if let Some(ref proc_name) = process_filter {
+		for name in &sorted_filter {
+			if let Some(status) = status_map.get(name) {
+				for proc in &status.processes {
+					if proc.name == *proc_name {
+						print_process_line(proc, proc.name.len());
+						return 1;
+					}
+				}
+				eprintln!("process '{}' not found in {}", proc_name, name);
+				std::process::exit(1);
+			} else {
+				eprintln!("service '{}' not running", name);
+				std::process::exit(1);
+			}
+		}
+		return 0;
+	}
+
+	let max_name_width = sorted_filter.iter().map(|n| n.len()).max().unwrap_or(0);
+	let max_proc_name_width = sorted_filter
+		.iter()
+		.filter_map(|name| status_map.get(name))
+		.flat_map(|s| s.processes.iter().map(|p| p.name.len()))
+		.max()
+		.unwrap_or(0);
+
+	let mut lines = 0usize;
+	for name in &sorted_filter {
+		let entry = entries.get(name);
+		let status = status_map.get(name);
+		let running = status.map(|s| s.is_running()).unwrap_or(false);
+
+		let detail = if let Some(entry) = entry {
+			if let Some(ref cmd) = entry.command {
+				cmd.clone()
+			} else {
+				entry.dir.to_string_lossy().to_string()
+			}
+		} else {
+			String::new()
+		};
+
+		let circle = if running { "●".green().to_string() } else { "●".red().to_string() };
+		println!(" {} {:<width$} {}", circle, name, detail, width = max_name_width);
+		lines += 1;
+
+		if let Some(status) = status {
+			for proc in &status.processes {
+				print!("   └ ");
+				print_process_line(proc, max_proc_name_width);
+				lines += 1;
+			}
+		}
+	}
+	lines
+}
+
+/// Watch loop: repeatedly render status with cursor-up overwrite.
+fn watch_status(args: &[String], opts: &WatchOpts) {
+	let start = Instant::now();
+	let mut prev_lines = 0usize;
+	let stdout = io::stdout();
+
+	loop {
+		// Move cursor up to overwrite previous output, erase below
+		if prev_lines > 0 {
+			print!("\x1b[{}A\x1b[J", prev_lines);
+			let _ = stdout.lock().flush();
+		}
+
+		prev_lines = render_status(args);
+		let _ = stdout.lock().flush();
+
+		// Check if duration exceeded
+		if let Some(duration) = opts.duration {
+			if start.elapsed().as_secs() >= duration {
+				return;
+			}
+		}
+
+		std::thread::sleep(std::time::Duration::from_secs(opts.interval));
 	}
 }
 
