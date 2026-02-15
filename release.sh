@@ -32,7 +32,7 @@ for target in "${targets[@]}"; do
 	esac
 
 	archive="${bin}-${tag}-${target}.tar.gz"
-	tar -czf "${dist}/${archive}" -C "target/${target}/release" "${bin}"
+	tar -czf "${dist}/${archive}" -C "target/${target}/release" "${bin}" "ubermind-daemon"
 	echo "  -> ${dist}/${archive}"
 	echo
 done
