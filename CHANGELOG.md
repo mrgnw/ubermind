@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-02-15
+
+### Added
+
+- **`tail` command**: Follow log files in real-time (`ub tail matrix.automation`)
+- **Dot syntax targeting**: Use `service.process` to target a specific process
+  - `ub status matrix.automation` — show only the automation process
+  - `ub logs matrix.baibot` — view logs for a specific process
+  - `.process` shorthand from within a project directory (e.g., `ub status .api`)
+- **`--watch` / `-w` flag**: Live-updating status display
+  - `ub status matrix -w` — watch for 4s (default), refresh every 1s
+  - `ub status --all -w 10` — watch all services for 10s
+  - `ub start matrix -w` — start then watch status
+  - `--watch-interval N` to customize refresh rate
+  - Uses cursor-up rewrite for flicker-free updates
+- **Human-readable uptime**: `6h10m` instead of `22255s`
+- **Text status labels**: `on`, `off`, `failed`, `crashed` as a final column
+- **Color distinction**: Crashed processes (retrying) shown in yellow vs failed (terminal) in red
+
 ## [0.6.0] - TBD
 
 ### Changed
