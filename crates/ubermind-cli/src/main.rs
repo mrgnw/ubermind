@@ -31,6 +31,7 @@ fn main() {
 		"reload" => cmd_reload(&args[1..]),
 		"restart" => cmd_restart(&args[1..]),
 		"logs" => cmd_logs(&args[1..]),
+		"tail" => cmd_tail(&args[1..]),
 		"echo" => cmd_echo(&args[1..]),
 		"show" => cmd_show(&args[1..]),
 		"daemon" => cmd_daemon(&args[1..]),
@@ -47,14 +48,17 @@ fn main() {
 		}
 		name => {
 			// Flexible arg ordering: treat first arg as service name
+			// Also handle dot syntax: "matrix.automation" as a service ref
 			let services = config::load_service_entries();
-			if services.contains_key(name) && args.len() > 1 {
+			let base_name = name.split('.').next().unwrap_or(name);
+			if services.contains_key(base_name) && args.len() > 1 {
 				match args[1].as_str() {
 					"start" => cmd_start(&[args[0].clone()]),
 					"stop" => cmd_stop(&[args[0].clone()]),
 					"reload" => cmd_reload(&[args[0].clone()]),
 					"status" | "st" => cmd_status(&[args[0].clone()]),
 					"logs" => cmd_logs(&args),
+					"tail" => cmd_tail(&args),
 					"echo" => cmd_echo(&args),
 					"show" => cmd_show(&args),
 					"restart" => {
@@ -69,7 +73,7 @@ fn main() {
 						std::process::exit(1);
 					}
 				}
-			} else if services.contains_key(name) {
+			} else if services.contains_key(base_name) {
 				cmd_status(&[args[0].clone()]);
 			} else {
 				eprintln!("unknown command or service: {}", name);
@@ -96,8 +100,9 @@ fn print_usage() {
 	eprintln!("  stop [name|--all]            Stop service(s)");
 	eprintln!("  reload [name|--all]          Reload service(s) (stop + start)");
 	eprintln!("  restart [name] [process]     Restart a process within a service");
-	eprintln!("  logs <name> [process]        Tail log files");
-	eprintln!("  echo <name> [process]        Live output stream");
+	eprintln!("  logs <name> [process]        Show last 100 lines of log file");
+	eprintln!("  tail <name> [process]        Follow log file (tail -f)");
+	eprintln!("  echo <name> [process]        Live output stream from daemon");
 	eprintln!("  show [name] [process]        Show Procfile or process command");
 	eprintln!("  add [name] [dir]             Register a project");
 	eprintln!("  init                         Create config files");
@@ -105,6 +110,10 @@ fn print_usage() {
 	eprintln!("  serve [-d|--stop|--status]   Manage HTTP server for UI");
 	eprintln!("  launchd [command]            Manage macOS launchd agents");
 	eprintln!("  self update                  Update ubermind to the latest version");
+	eprintln!();
+	eprintln!("targeting: use name.process dot syntax to target a specific process");
+	eprintln!("  ub status matrix             show all processes in matrix");
+	eprintln!("  ub status matrix.automation  show only the automation process");
 	eprintln!();
 	eprintln!("context-aware: run from a project directory to auto-target it");
 	eprintln!();
@@ -296,12 +305,21 @@ fn cmd_status(args: &[String]) {
 	};
 
 	let entries = config::load_service_entries();
-	
+
+	// Check for dot syntax targeting a specific process (e.g., "matrix.automation" or ".automation")
+	let (process_filter, resolved_args) = if let Some(first) = args.first() {
+		let (svc, proc) = resolve_dot_target(first, &entries);
+		let rest: Vec<String> = std::iter::once(svc).chain(args[1..].iter().cloned()).collect();
+		(proc, rest)
+	} else {
+		(None, args.to_vec())
+	};
+
 	// Determine if we should show all or just current project
-	let show_all = !args.is_empty() && (args.len() == 1 && is_all_flag(&args[0]) || args.iter().any(|a| is_all_flag(a)));
+	let show_all = !resolved_args.is_empty() && (resolved_args.len() == 1 && is_all_flag(&resolved_args[0]) || resolved_args.iter().any(|a| is_all_flag(a)));
 	let current_project = get_current_project(&entries);
 	
-	let filter = if args.is_empty() {
+	let filter = if resolved_args.is_empty() {
 		// No args: show only current project if in one, otherwise show all
 		if let Some(ref current) = current_project {
 			vec![current.clone()]
@@ -311,7 +329,7 @@ fn cmd_status(args: &[String]) {
 	} else if show_all {
 		entries.keys().cloned().collect()
 	} else {
-		resolve_target_names(args, &entries)
+		resolve_target_names(&resolved_args, &entries)
 	};
 
 	let mut status_map: std::collections::HashMap<String, &ServiceStatus> =
@@ -332,6 +350,26 @@ fn cmd_status(args: &[String]) {
 				a.cmp(b)
 			}
 		});
+	}
+
+	// If targeting a single process via dot syntax, show just that process
+	if let Some(ref proc_name) = process_filter {
+		for name in &sorted_filter {
+			if let Some(status) = status_map.get(name) {
+				for proc in &status.processes {
+					if proc.name == *proc_name {
+						print_process_line(proc, proc.name.len());
+						return;
+					}
+				}
+				eprintln!("process '{}' not found in {}", proc_name, name);
+				std::process::exit(1);
+			} else {
+				eprintln!("service '{}' not running", name);
+				std::process::exit(1);
+			}
+		}
+		return;
 	}
 
 	// Calculate column widths for alignment
@@ -364,22 +402,29 @@ fn cmd_status(args: &[String]) {
 
 		if let Some(status) = status {
 			for proc in &status.processes {
-				let (circle, uptime, pid) = match &proc.state {
-					ProcessState::Running { pid, uptime_secs } => {
-						("●".green().to_string(), format!("{}s", uptime_secs), format!("{}", pid))
-					}
-					ProcessState::Stopped => ("●".red().to_string(), "stopped".to_string(), "-".to_string()),
-					ProcessState::Crashed { exit_code, retries } => {
-						("●".red().to_string(), format!("crashed (exit {}, retry {})", exit_code, retries), "-".to_string())
-					}
-					ProcessState::Failed { exit_code } => {
-						("●".red().to_string(), format!("failed (exit {})", exit_code), "-".to_string())
-					}
-				};
-				println!("   └ {} {:<pwidth$} {:<8} {}", circle, proc.name, uptime, pid, pwidth = max_proc_name_width);
+				print!("   └ ");
+				print_process_line(proc, max_proc_name_width);
 			}
 		}
 	}
+}
+
+fn print_process_line(proc: &ProcessStatus, name_width: usize) {
+	let (circle, uptime, pid, label) = match &proc.state {
+		ProcessState::Running { pid, uptime_secs } => {
+			("●".green().to_string(), format_uptime(*uptime_secs), format!("{}", pid), "on".green().to_string())
+		}
+		ProcessState::Stopped => {
+			("●".red().to_string(), "-".to_string(), "-".to_string(), "off".red().to_string())
+		}
+		ProcessState::Crashed { exit_code, retries } => {
+			("●".yellow().to_string(), format!("exit {}", exit_code), format!("retry {}", retries), "crashed".yellow().to_string())
+		}
+		ProcessState::Failed { exit_code } => {
+			("●".red().to_string(), format!("exit {}", exit_code), "-".to_string(), "failed".red().to_string())
+		}
+	};
+	println!("{} {:<width$} {:<8} {:<8} {}", circle, proc.name, uptime, pid, label, width = name_width);
 }
 
 fn cmd_start(args: &[String]) {
@@ -520,21 +565,23 @@ fn cmd_restart(args: &[String]) {
 fn cmd_logs(args: &[String]) {
 	if args.is_empty() {
 		eprintln!("usage: ub logs <service> [process]");
+		eprintln!("       ub logs <service.process>");
 		std::process::exit(1);
 	}
 
-	let service = &args[0];
-	let process = args.get(1).map(|s| s.as_str());
+	let svc_entries = config::load_service_entries();
+	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
+	let process = process.or_else(|| args.get(1).map(|s| s.to_string()));
 
-	let log_dir = ubermind_core::logs::service_log_dir(service);
+	let log_dir = ubermind_core::logs::service_log_dir(&service);
 	if !log_dir.exists() {
 		eprintln!("no logs for {}", service);
 		std::process::exit(1);
 	}
 
 	let mut files: Vec<PathBuf> = Vec::new();
-	if let Ok(entries) = std::fs::read_dir(&log_dir) {
-		for entry in entries.flatten() {
+	if let Ok(dir_entries) = std::fs::read_dir(&log_dir) {
+		for entry in dir_entries.flatten() {
 			let path = entry.path();
 			let name = path
 				.file_name()
@@ -544,8 +591,8 @@ fn cmd_logs(args: &[String]) {
 			if !name.ends_with(".log") {
 				continue;
 			}
-			if let Some(proc_filter) = process {
-				if !name.starts_with(proc_filter) {
+			if let Some(ref proc_filter) = process {
+				if !name.starts_with(proc_filter.as_str()) {
 					continue;
 				}
 			}
@@ -574,17 +621,71 @@ fn cmd_logs(args: &[String]) {
 	}
 }
 
-fn cmd_echo(args: &[String]) {
+fn cmd_tail(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub echo <service> [process]");
+		eprintln!("usage: ub tail <service> [process]");
+		eprintln!("       ub tail <service.process>");
 		std::process::exit(1);
 	}
 
-	let service = &args[0];
-	let process = args.get(1).cloned();
+	let svc_entries = config::load_service_entries();
+	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
+	let process = process.or_else(|| args.get(1).cloned());
+
+	let log_dir = ubermind_core::logs::service_log_dir(&service);
+	if !log_dir.exists() {
+		eprintln!("no logs for {}", service);
+		std::process::exit(1);
+	}
+
+	let mut files: Vec<PathBuf> = Vec::new();
+	if let Ok(dir_entries) = std::fs::read_dir(&log_dir) {
+		for entry in dir_entries.flatten() {
+			let path = entry.path();
+			let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+			if !name.ends_with(".log") {
+				continue;
+			}
+			if let Some(ref proc_filter) = process {
+				if !name.starts_with(proc_filter.as_str()) {
+					continue;
+				}
+			}
+			files.push(path);
+		}
+	}
+
+	files.sort();
+
+	if files.is_empty() {
+		eprintln!("no log files found");
+		std::process::exit(1);
+	}
+
+	let latest = files.last().unwrap();
+	let mut cmd = Command::new("tail");
+	cmd.args(["-f", "-n", "100"]);
+	cmd.arg(latest);
+	let status = cmd.status().unwrap_or_else(|e| {
+		eprintln!("error: {}", e);
+		std::process::exit(1);
+	});
+	std::process::exit(status.code().unwrap_or(1));
+}
+
+fn cmd_echo(args: &[String]) {
+	if args.is_empty() {
+		eprintln!("usage: ub echo <service> [process]");
+		eprintln!("       ub echo <service.process>");
+		std::process::exit(1);
+	}
+
+	let svc_entries = config::load_service_entries();
+	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
+	let process = process.or_else(|| args.get(1).cloned());
 
 	let response = send_request(&Request::Logs {
-		service: service.clone(),
+		service,
 		process,
 		follow: true,
 	});
@@ -771,6 +872,52 @@ fn cmd_serve(args: &[String]) {
 			std::process::exit(1);
 		});
 		std::process::exit(status.code().unwrap_or(1));
+	}
+}
+
+// --- Formatting helpers ---
+
+fn format_uptime(secs: u64) -> String {
+	if secs < 60 {
+		format!("{}s", secs)
+	} else if secs < 3600 {
+		let m = secs / 60;
+		let s = secs % 60;
+		if s == 0 { format!("{}m", m) } else { format!("{}m{}s", m, s) }
+	} else if secs < 86400 {
+		let h = secs / 3600;
+		let m = (secs % 3600) / 60;
+		if m == 0 { format!("{}h", h) } else { format!("{}h{}m", h, m) }
+	} else {
+		let d = secs / 86400;
+		let h = (secs % 86400) / 3600;
+		if h == 0 { format!("{}d", d) } else { format!("{}d{}h", d, h) }
+	}
+}
+
+/// Parse a dot-separated target like "matrix.automation" into (service, Some(process))
+/// or "matrix" into (service, None). Leading dot like ".baibot" returns ("", Some("baibot")).
+fn parse_dot_target(name: &str) -> (&str, Option<&str>) {
+	if let Some(dot) = name.find('.') {
+		(&name[..dot], Some(&name[dot + 1..]))
+	} else {
+		(name, None)
+	}
+}
+
+/// Like parse_dot_target but resolves empty service to current project.
+/// Returns owned strings. Exits on error if leading dot used outside a project dir.
+fn resolve_dot_target(name: &str, entries: &BTreeMap<String, ServiceEntry>) -> (String, Option<String>) {
+	let (svc, proc) = parse_dot_target(name);
+	if svc.is_empty() {
+		if let Some(current) = get_current_project(entries) {
+			(current, proc.map(|s| s.to_string()))
+		} else {
+			eprintln!("not in a registered project directory; use service.process syntax");
+			std::process::exit(1);
+		}
+	} else {
+		(svc.to_string(), proc.map(|s| s.to_string()))
 	}
 }
 
