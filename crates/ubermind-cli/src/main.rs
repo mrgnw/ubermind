@@ -1,3 +1,5 @@
+mod launchd;
+
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -32,6 +34,7 @@ fn main() {
 		"show" => cmd_show(&args[1..]),
 		"daemon" => cmd_daemon(&args[1..]),
 		"serve" => cmd_serve(&args[1..]),
+		"launchd" | "launch" => launchd::cmd_launchd(&args[1..]),
 		name => {
 			// Flexible arg ordering: treat first arg as service name
 			let services = config::load_service_entries();
@@ -90,6 +93,7 @@ fn print_usage() {
 	eprintln!("  init                         Create config files");
 	eprintln!("  daemon [start|stop|status]   Manage the daemon");
 	eprintln!("  serve [-d|--stop|--status]   Manage HTTP server for UI");
+	eprintln!("  launchd [command]            Manage macOS launchd agents");
 	eprintln!();
 	eprintln!("context-aware: run from a project directory to auto-target it");
 	eprintln!();
