@@ -1,13 +1,18 @@
 use crate::supervisor::Supervisor;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::http::{header, StatusCode, Uri};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use rust_embed::RustEmbed;
 use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+
+#[derive(RustEmbed)]
+#[folder = "../../ui/build/"]
+struct UiAssets;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -33,6 +38,7 @@ pub fn router(supervisor: Arc<Supervisor>) -> Router {
 		)
 		.route("/api/services/{name}/echo", get(echo_service))
 		.route("/ws/echo/{name}", get(ws_echo))
+		.fallback(static_handler)
 		.layer(CorsLayer::permissive())
 		.with_state(state)
 }
@@ -290,4 +296,36 @@ async fn handle_ws_echo(mut socket: WebSocket, state: AppState, name: String) {
 			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 		}
 	}
+}
+
+async fn static_handler(uri: Uri) -> impl IntoResponse {
+	let path = uri.path().trim_start_matches('/');
+	
+	// Try exact path first
+	if let Some(content) = UiAssets::get(path) {
+		return serve_asset(path, content);
+	}
+	
+	// For SPA routing, serve index.html for any non-asset path
+	if !path.starts_with("_app/") && !path.contains('.') {
+		if let Some(content) = UiAssets::get("index.html") {
+			return serve_asset("index.html", content);
+		}
+	}
+	
+	// 404
+	Response::builder()
+		.status(StatusCode::NOT_FOUND)
+		.body("Not Found".into())
+		.unwrap()
+}
+
+fn serve_asset(path: &str, content: rust_embed::EmbeddedFile) -> Response {
+	let mime = mime_guess::from_path(path).first_or_octet_stream();
+	
+	Response::builder()
+		.status(StatusCode::OK)
+		.header(header::CONTENT_TYPE, mime.as_ref())
+		.body(content.data.into())
+		.unwrap()
 }

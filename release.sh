@@ -16,6 +16,18 @@ targets=(
 echo "building ${bin} ${tag}"
 echo
 
+# Build the UI first
+echo "building UI..."
+cd ui
+if ! command -v pnpm >/dev/null 2>&1; then
+	echo "error: pnpm not found" >&2
+	exit 1
+fi
+pnpm install
+pnpm build
+cd ..
+echo
+
 rm -rf "${dist}"
 mkdir -p "${dist}"
 

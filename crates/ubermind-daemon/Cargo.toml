@@ -22,3 +22,5 @@ tower-http = { workspace = true }
 nix = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+rust-embed = { version = "8", features = ["axum"] }
+mime_guess = "2"
