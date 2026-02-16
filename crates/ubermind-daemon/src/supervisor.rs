@@ -12,6 +12,7 @@ use ubermind_core::types::*;
 pub struct Supervisor {
 	pub services: Arc<RwLock<HashMap<String, ManagedService>>>,
 	pub config: GlobalConfig,
+	pub http_port: Option<u16>,
 }
 
 pub struct ManagedService {
@@ -33,10 +34,11 @@ pub struct ManagedProcess {
 }
 
 impl Supervisor {
-	pub fn new(config: GlobalConfig) -> Arc<Self> {
+	pub fn new(config: GlobalConfig, http_port: Option<u16>) -> Arc<Self> {
 		Arc::new(Self {
 			services: Arc::new(RwLock::new(HashMap::new())),
 			config,
+			http_port,
 		})
 	}
 

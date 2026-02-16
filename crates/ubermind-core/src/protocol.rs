@@ -31,7 +31,7 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
 	Ok { message: Option<String> },
-	Status { services: Vec<ServiceStatus> },
+	Status { services: Vec<ServiceStatus>, http_port: Option<u16> },
 	Log { line: String },
 	Error { message: String },
 	Progress { service: String, message: String },

@@ -16,6 +16,10 @@ fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();
 
 	if args.is_empty() {
+		if connect_daemon().is_some() {
+			render_status(&[]);
+			eprintln!();
+		}
 		print_usage();
 		check_alias_hint();
 		return;
@@ -27,6 +31,7 @@ fn main() {
 		"init" => cmd_init(),
 		"add" => cmd_add(&args[1..]),
 		"status" | "st" => cmd_status(&args[1..]),
+		"all" => cmd_status(&["all".to_string()]),
 		"start" => cmd_start(&args[1..]),
 		"stop" => cmd_stop(&args[1..]),
 		"reload" => cmd_reload(&args[1..]),
@@ -91,45 +96,50 @@ fn main() {
 }
 
 fn print_usage() {
-	eprintln!("ubermind {} — process daemon manager", env!("CARGO_PKG_VERSION"));
+	eprintln!("{} {} — process daemon manager", "ubermind".bold(), env!("CARGO_PKG_VERSION"));
 	eprintln!();
-	eprintln!("usage: ub [command] [service] [options]");
+	eprintln!("usage: {} [command] [service] [options]", "ub".bold());
 	eprintln!();
-	eprintln!("commands:");
-	eprintln!("  status [name|--all]          Show service status");
-	eprintln!("  start [name|--all]           Start service(s)");
-	eprintln!("  stop [name|--all]            Stop service(s)");
-	eprintln!("  reload [name|--all]          Reload service(s) (stop + start)");
-	eprintln!("  restart [name] [process]     Restart a process within a service");
-	eprintln!("  logs <name> [process]        Show last 100 lines of log file");
-	eprintln!("  tail <name> [process]        Follow log file (tail -f)");
-	eprintln!("  echo <name> [process]        Live output stream from daemon");
-	eprintln!("  show [name] [process]        Show Procfile or process command");
-	eprintln!("  add [name] [dir]             Register a project");
-	eprintln!("  init                         Create config files");
-	eprintln!("  daemon [start|stop|status]   Manage the daemon");
-	eprintln!("  serve [-d|--stop|--status]   Manage HTTP server for UI");
-	eprintln!("  launchd [command]            Manage macOS launchd agents");
-	eprintln!("  self update                  Update ubermind to the latest version");
+
+	eprintln!("{}", "services".cyan().bold());
+	eprintln!("  {} [name|--all]          Show status (default command)", "status".bold());
+	eprintln!("  {} [name|--all]           Start service(s)", "start".bold());
+	eprintln!("  {} [name|--all]            Stop service(s)", "stop".bold());
+	eprintln!("  {} [name|--all]          Reload (stop + start)", "reload".bold());
+	eprintln!("  {} [name] [process]     Restart a single process", "restart".bold());
 	eprintln!();
-	eprintln!("targeting: use name.process dot syntax to target a specific process");
-	eprintln!("  ub status matrix             show all processes in matrix");
-	eprintln!("  ub status matrix.automation  show only the automation process");
+
+	eprintln!("{}", "logs".cyan().bold());
+	eprintln!("  {} <name> [process]        Last 100 lines of log file", "logs".bold());
+	eprintln!("  {} <name> [process]        Follow log file (tail -f)", "tail".bold());
+	eprintln!("  {} <name> [process]        Live output stream from daemon", "echo".bold());
 	eprintln!();
-	eprintln!("optional processes: prefix with #~ in Procfile to skip on start");
-	eprintln!("  #~ ui: pnpm dev              defined but not started by default");
-	eprintln!("  ub start myapp.ui            explicitly start an optional process");
-	eprintln!("  ub start myapp --all         start all processes including optional");
+
+	eprintln!("{}", "config".cyan().bold());
+	eprintln!("  {} [name] [process]        Show Procfile or process command", "show".bold());
+	eprintln!("  {} [name] [dir]             Register a project", "add".bold());
+	eprintln!("  {}                         Create config files", "init".bold());
 	eprintln!();
-	eprintln!("context-aware: run from a project directory to auto-target it");
+
+	eprintln!("{}", "system".cyan().bold());
+	eprintln!("  {} [start|stop|status]   Manage the daemon", "daemon".bold());
+	eprintln!("  {} [-d|--stop|--status]   HTTP server for web UI", "serve".bold());
+	eprintln!("  {} [command]            macOS launchd agents", "launchd".bold());
+	eprintln!("  {}                  Update to latest version", "self update".bold());
 	eprintln!();
-	eprintln!("examples:");
-	eprintln!("  ub restart api               (from within project) restart 'api' process");
-	eprintln!("  ub restart appligator api    (from anywhere) restart appligator's 'api' process");
-	eprintln!("  ub show                      (from within project) show Procfile");
-	eprintln!("  ub show api                  (from within project) show 'api' command");
-	eprintln!("  ub show appligator           show appligator's Procfile");
-	eprintln!("  ub show appligator api       show appligator's 'api' command");
+
+	eprintln!("{}", "targeting".cyan().bold());
+	eprintln!("  Use {} dot syntax to target a specific process:", "name.process".bold());
+	eprintln!("    ub status matrix.automation");
+	eprintln!("  Context-aware: run from a project dir to auto-target it");
+	eprintln!("    ub restart api             restart 'api' in current project");
+	eprintln!("    ub restart appligator api  target a specific project");
+	eprintln!();
+
+	eprintln!("{}", "shortcuts".cyan().bold());
+	eprintln!("    ub                         status (current project or all)");
+	eprintln!("    ub all                     status --all");
+	eprintln!("    ub --watch                 status --watch (live refresh)");
 }
 
 // --- Config management (no daemon needed) ---
@@ -297,7 +307,7 @@ fn send_request(request: &Request) -> Response {
 // --- Commands that talk to daemon ---
 
 fn cmd_status(args: &[String]) {
-	let (watch, rest) = parse_watch_opts(args);
+	let (watch, rest) = parse_watch_opts(args, None); // None = indefinite watch
 	if watch.enabled {
 		watch_status(&rest, &watch);
 	} else {
@@ -327,7 +337,7 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 }
 
 fn cmd_start(args: &[String]) {
-	let (watch, rest) = parse_watch_opts(args);
+	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
 	let entries = config::load_service_entries();
 
 	let start_all = rest.iter().any(|a| is_all_flag(a));
@@ -370,11 +380,13 @@ fn cmd_start(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			if watch.enabled {
-				watch_status(&resolved, &watch);
-			} else {
-				render_status(&resolved);
+			
+			// Always watch after start - default 4 seconds unless --watch was explicitly used
+			if !watch.enabled {
+				watch.enabled = true;
+				watch.duration = Some(4);
 			}
+			watch_status(&resolved, &watch);
 		}
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
@@ -385,8 +397,9 @@ fn cmd_start(args: &[String]) {
 }
 
 fn cmd_stop(args: &[String]) {
+	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
 	let entries = config::load_service_entries();
-	let names = resolve_target_names(args, &entries);
+	let names = resolve_target_names(&rest, &entries);
 
 	if names.is_empty() {
 		eprintln!("no services to stop");
@@ -401,6 +414,14 @@ fn cmd_stop(args: &[String]) {
 					eprintln!("{}", line);
 				}
 			}
+			std::thread::sleep(std::time::Duration::from_millis(500));
+			
+			// Always watch after stop - default 4 seconds unless --watch was explicitly used
+			if !watch.enabled {
+				watch.enabled = true;
+				watch.duration = Some(4);
+			}
+			watch_status(&names, &watch);
 		}
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
@@ -411,7 +432,7 @@ fn cmd_stop(args: &[String]) {
 }
 
 fn cmd_reload(args: &[String]) {
-	let (watch, rest) = parse_watch_opts(args);
+	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
 	let entries = config::load_service_entries();
 
 	let reload_all = rest.iter().any(|a| is_all_flag(a));
@@ -436,11 +457,13 @@ fn cmd_reload(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			if watch.enabled {
-				watch_status(&names, &watch);
-			} else {
-				render_status(&names);
+			
+			// Always watch after reload - default 4 seconds unless --watch was explicitly used
+			if !watch.enabled {
+				watch.enabled = true;
+				watch.duration = Some(4);
 			}
+			watch_status(&names, &watch);
 		}
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
@@ -451,20 +474,24 @@ fn cmd_reload(args: &[String]) {
 }
 
 fn cmd_restart(args: &[String]) {
-	let (watch, rest) = parse_watch_opts(args);
+	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
 	let entries = config::load_service_entries();
+
+	// Always enable watch with 4 second default unless explicitly specified
+	if !watch.enabled {
+		watch.enabled = true;
+		watch.duration = Some(4);
+	}
 
 	// Reconstruct watch args to pass through to cmd_reload
 	let mut reload_extra: Vec<String> = Vec::new();
-	if watch.enabled {
-		reload_extra.push("--watch".to_string());
-		if let Some(d) = watch.duration {
-			reload_extra.push(d.to_string());
-		}
-		if watch.interval != 1 {
-			reload_extra.push("--watch-interval".to_string());
-			reload_extra.push(watch.interval.to_string());
-		}
+	reload_extra.push("--watch".to_string());
+	if let Some(d) = watch.duration {
+		reload_extra.push(d.to_string());
+	}
+	if watch.interval != 1 {
+		reload_extra.push("--watch-interval".to_string());
+		reload_extra.push(watch.interval.to_string());
 	}
 
 	// Context-aware: if no args or first arg is not a service, check if we're in a project
@@ -509,10 +536,8 @@ fn cmd_restart(args: &[String]) {
 				if let Some(msg) = message {
 					eprintln!("{}", msg);
 				}
-				if watch.enabled {
-					std::thread::sleep(std::time::Duration::from_millis(500));
-					watch_status(&[service], &watch);
-				}
+				std::thread::sleep(std::time::Duration::from_millis(500));
+				watch_status(&[service], &watch);
 			}
 			Response::Error { message } => {
 				eprintln!("error: {}", message);
@@ -664,19 +689,28 @@ fn cmd_echo(args: &[String]) {
 		(svc, proc.or_else(|| args.get(1).cloned()))
 	};
 
-	let response = send_request(&Request::Logs {
-		service,
-		process,
-		follow: true,
-	});
+	// Loop continuously, fetching and printing logs
+	loop {
+		let response = send_request(&Request::Logs {
+			service: service.clone(),
+			process: process.clone(),
+			follow: true,
+		});
 
-	match response {
-		Response::Log { line } => print!("{}", line),
-		Response::Error { message } => {
-			eprintln!("error: {}", message);
-			std::process::exit(1);
+		match response {
+			Response::Log { line } => {
+				print!("{}", line);
+				let _ = io::stdout().flush();
+			}
+			Response::Error { message } => {
+				eprintln!("error: {}", message);
+				std::process::exit(1);
+			}
+			_ => {}
 		}
-		_ => {}
+		
+		// Small delay to avoid hammering the daemon
+		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
 }
 
@@ -874,7 +908,9 @@ struct WatchOpts {
 }
 
 /// Parse --watch / -w and --watch-interval from args, returning the opts and remaining args.
-fn parse_watch_opts(args: &[String]) -> (WatchOpts, Vec<String>) {
+/// default_duration: duration to use if --watch is specified without a number.
+/// Pass None for indefinite watch (status command), Some(4) for others.
+fn parse_watch_opts(args: &[String], default_duration: Option<u64>) -> (WatchOpts, Vec<String>) {
 	let mut opts = WatchOpts {
 		duration: None,
 		interval: 1,
@@ -893,9 +929,9 @@ fn parse_watch_opts(args: &[String]) -> (WatchOpts, Vec<String>) {
 						i += 1;
 					}
 				}
-				// If no number follows, default duration
+				// If no number follows, use the default duration
 				if opts.duration.is_none() {
-					opts.duration = Some(4);
+					opts.duration = default_duration;
 				}
 			}
 			"--watch-interval" => {
@@ -914,10 +950,10 @@ fn parse_watch_opts(args: &[String]) -> (WatchOpts, Vec<String>) {
 }
 
 /// Fetch current status from daemon.
-fn fetch_status() -> Vec<ServiceStatus> {
+fn fetch_status() -> (Vec<ServiceStatus>, Option<u16>) {
 	let response = send_request(&Request::Status);
 	match response {
-		Response::Status { services } => services,
+		Response::Status { services, http_port } => (services, http_port),
 		Response::Error { message } => {
 			eprintln!("error: {}", message);
 			std::process::exit(1);
@@ -931,7 +967,7 @@ fn fetch_status() -> Vec<ServiceStatus> {
 
 /// Render status to stdout. Returns the number of lines printed.
 fn render_status(args: &[String]) -> usize {
-	let services = fetch_status();
+	let (services, http_port) = fetch_status();
 	let entries = config::load_service_entries();
 
 	// Check for dot syntax targeting a specific process
@@ -1033,6 +1069,18 @@ fn render_status(args: &[String]) -> usize {
 			}
 		}
 	}
+
+	if show_all || (resolved_args.is_empty() && current_project.is_none()) {
+		println!();
+		lines += 1;
+		if let Some(port) = http_port {
+			println!(" {} {:<width$} http://127.0.0.1:{}", "●".green(), "serve", port, width = max_name_width);
+		} else {
+			println!(" {} {:<width$} not running", "○".dimmed(), "serve", width = max_name_width);
+		}
+		lines += 1;
+	}
+
 	lines
 }
 

@@ -84,6 +84,16 @@ ubermind add myapp ~/dev/myapp
 
 This tells ubermind "there's a project called `myapp` at `~/dev/myapp` that has a Procfile."
 
+**Shorthand:** If you're already in the project directory with a Procfile, just run:
+
+```sh
+cd ~/dev/myapp
+ubermind add
+# myapp: added (/Users/you/dev/myapp)
+```
+
+This automatically uses the directory name as the project name.
+
 ### 4. Start it
 
 ```sh
@@ -133,7 +143,7 @@ Standalone commands from the `commands` file are auto-expanded into generated Pr
 
 ```
 ubermind init                # create projects config file
-ubermind add <name> <dir>    # register a project directory
+ubermind add [name] [dir]    # register a project directory (uses cwd if omitted)
 
 ubermind status              # show all projects
 ubermind start [name]        # start project(s)
@@ -141,26 +151,56 @@ ubermind stop [name]         # stop project(s)
 ubermind reload [name]       # restart project(s) (picks up Procfile changes)
 ubermind kill [name]         # kill process(es) in project(s)
 ubermind restart [name]      # restart process(es) in project(s)
-ubermind echo [name]         # view logs from project(s)
-ubermind connect [name]      # connect to a process in a project
+ubermind echo [name]         # live stream logs from project(s)
+ubermind logs [name]         # show last 100 lines of log file
+ubermind tail [name]         # follow log file (tail -f)
 ubermind serve [-p PORT]     # start web UI server (default port: 13369)
 ```
 
-Pass any overmind command to a specific project:
+### Watch mode
+
+Commands that modify services automatically watch status for 4 seconds:
+
+```sh
+ubermind start myapp               # starts and watches for 4 seconds
+ubermind stop myapp                # stops and watches for 4 seconds
+ubermind reload myapp              # reloads and watches for 4 seconds
+ubermind restart myapp web         # restarts process and watches for 4 seconds
+```
+
+Override the default watch duration or use with status:
+
+```sh
+ubermind status --watch            # watch indefinitely (refreshes every 1s)
+ubermind status --watch 10         # watch for 10 seconds
+ubermind start myapp --watch 8     # start and watch for 8 seconds (overrides default)
+ubermind reload myapp --watch 0    # reload without watching
+```
+
+### Live logs
+
+```sh
+ubermind echo myapp          # live stream logs from myapp (runs until stopped)
+ubermind echo myapp web      # live stream from specific process
+ubermind logs myapp          # show last 100 lines from log file
+ubermind tail myapp          # follow log file (like tail -f)
+```
+
+### Targeting
+
+Pass project names to target specific projects:
 
 ```
 ubermind status myapp        # show status of myapp
-ubermind echo myapp          # view myapp's logs
-ubermind myapp connect web   # attach to myapp's web process
-ubermind connect web myapp   # same thing, project name last
+ubermind myapp status        # same thing, flexible arg ordering
 ```
 
-Omit the name to target all projects:
+Omit the name to target all projects (or current project if in a registered directory):
 
 ```
 ubermind start               # start all projects
 ubermind stop                # stop all projects
-ubermind echo                # view logs from all projects
+cd ~/dev/myapp && ub status  # show status of myapp (context-aware)
 ```
 
 ## Config
@@ -174,6 +214,13 @@ You can edit it directly or use `ubermind add`:
 myapp: ~/dev/myapp
 api: ~/dev/api-server
 frontend: ~/dev/frontend
+```
+
+Quick add from a project directory:
+```sh
+cd ~/dev/myapp && ubermind add              # infers name from directory
+cd ~/dev/myapp && ubermind add myapp        # uses cwd, custom name
+ubermind add myapp ~/dev/myapp              # full form with explicit path
 ```
 
 Optionally, define standalone commands in `~/.config/ubermind/commands`:

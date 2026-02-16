@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-02-16
+
+### Added
+
+- **Auto-watch after modifications**: Commands that modify services now automatically watch status for 4 seconds
+  - `ub start myapp` — automatically watches for 4s after starting
+  - `ub stop myapp` — automatically watches for 4s after stopping
+  - `ub reload myapp` — automatically watches for 4s after reloading
+  - `ub restart myapp web` — automatically watches for 4s after restarting a process
+  - Override default: `ub start myapp --watch 8` (custom duration)
+  - Disable watch: `ub start myapp --watch 0`
+- **Continuous echo streaming**: `ub echo` now runs continuously until stopped (Ctrl+C)
+  - Previously only printed one snapshot then exited
+  - Now properly streams live logs in real-time
+- **Simplified `ub add` command**: Register projects more easily
+  - `ub add` (from project dir) — auto-detects name from directory
+  - `ub add myapp` (from project dir) — uses cwd with custom name
+  - `ub add myapp ~/dev/myapp` — full form with explicit path
+
+### Changed
+
+- **Watch duration defaults**: Different defaults for different commands
+  - `ub status --watch` — indefinite (until stopped), 1s refresh interval
+  - `ub start/stop/reload/restart` — automatic 4s watch
+  - All watch durations can be overridden with explicit values
+
+### Fixed
+
+- Echo command now properly loops and streams output continuously
+- Watch mode default duration logic fixed for status vs modification commands
+
 ## [0.6.2] - 2026-02-15
 
 ### Added

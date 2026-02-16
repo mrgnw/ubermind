@@ -18,7 +18,8 @@ async fn main() {
 
 	let global_config = config::load_global_config();
 	let port = global_config.daemon.port;
-	let supervisor = supervisor::Supervisor::new(global_config.clone());
+	let http_port = if enable_http { Some(port) } else { None };
+	let supervisor = supervisor::Supervisor::new(global_config.clone(), http_port);
 
 	// Ensure state directory exists
 	let state_dir = protocol::state_dir();
@@ -137,7 +138,7 @@ async fn handle_request(supervisor: &Arc<supervisor::Supervisor>, request: Reque
 		Request::Ping => Response::Pong,
 		Request::Status => {
 			let services = supervisor.status().await;
-			Response::Status { services }
+			Response::Status { services, http_port: supervisor.http_port }
 		}
 		Request::Start { names, all, processes } => {
 			let mut messages = Vec::new();
