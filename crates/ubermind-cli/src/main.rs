@@ -528,15 +528,20 @@ fn cmd_restart(args: &[String]) {
 }
 
 fn cmd_logs(args: &[String]) {
-	if args.is_empty() {
-		eprintln!("usage: ub logs <service> [process]");
-		eprintln!("       ub logs <service.process>");
-		std::process::exit(1);
-	}
-
 	let svc_entries = config::load_service_entries();
-	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
-	let process = process.or_else(|| args.get(1).map(|s| s.to_string()));
+
+	let (service, process) = if args.is_empty() {
+		if let Some(current) = get_current_project(&svc_entries) {
+			(current, None)
+		} else {
+			eprintln!("usage: ub logs <service> [process]");
+			eprintln!("       ub logs <service.process>");
+			std::process::exit(1);
+		}
+	} else {
+		let (svc, proc) = resolve_dot_target(&args[0], &svc_entries);
+		(svc, proc.or_else(|| args.get(1).map(|s| s.to_string())))
+	};
 
 	let log_dir = ubermind_core::logs::service_log_dir(&service);
 	if !log_dir.exists() {
@@ -587,15 +592,20 @@ fn cmd_logs(args: &[String]) {
 }
 
 fn cmd_tail(args: &[String]) {
-	if args.is_empty() {
-		eprintln!("usage: ub tail <service> [process]");
-		eprintln!("       ub tail <service.process>");
-		std::process::exit(1);
-	}
-
 	let svc_entries = config::load_service_entries();
-	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
-	let process = process.or_else(|| args.get(1).cloned());
+
+	let (service, process) = if args.is_empty() {
+		if let Some(current) = get_current_project(&svc_entries) {
+			(current, None)
+		} else {
+			eprintln!("usage: ub tail <service> [process]");
+			eprintln!("       ub tail <service.process>");
+			std::process::exit(1);
+		}
+	} else {
+		let (svc, proc) = resolve_dot_target(&args[0], &svc_entries);
+		(svc, proc.or_else(|| args.get(1).cloned()))
+	};
 
 	let log_dir = ubermind_core::logs::service_log_dir(&service);
 	if !log_dir.exists() {
@@ -639,15 +649,20 @@ fn cmd_tail(args: &[String]) {
 }
 
 fn cmd_echo(args: &[String]) {
-	if args.is_empty() {
-		eprintln!("usage: ub echo <service> [process]");
-		eprintln!("       ub echo <service.process>");
-		std::process::exit(1);
-	}
-
 	let svc_entries = config::load_service_entries();
-	let (service, process) = resolve_dot_target(&args[0], &svc_entries);
-	let process = process.or_else(|| args.get(1).cloned());
+
+	let (service, process) = if args.is_empty() {
+		if let Some(current) = get_current_project(&svc_entries) {
+			(current, None)
+		} else {
+			eprintln!("usage: ub echo <service> [process]");
+			eprintln!("       ub echo <service.process>");
+			std::process::exit(1);
+		}
+	} else {
+		let (svc, proc) = resolve_dot_target(&args[0], &svc_entries);
+		(svc, proc.or_else(|| args.get(1).cloned()))
+	};
 
 	let response = send_request(&Request::Logs {
 		service,
