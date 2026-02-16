@@ -65,6 +65,7 @@ struct ProcessInfo {
 	pid: Option<u32>,
 	status: String,
 	autostart: bool,
+	ports: Vec<u16>,
 }
 
 #[derive(Serialize)]
@@ -129,6 +130,7 @@ async fn service_detail(
 				pid: p.pid,
 				status: status_str,
 				autostart: p.autostart,
+				ports: p.ports,
 			}
 		})
 		.collect();

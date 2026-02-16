@@ -51,6 +51,8 @@ export interface ProcessInfo {
   name: string;
   pid: number | null;
   status: string;
+  autostart: boolean;
+  ports: number[];
 }
 
 export interface ServiceDetail {

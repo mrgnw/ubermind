@@ -69,4 +69,6 @@ pub struct ProcessStatus {
 	pub pid: Option<u32>,
 	#[serde(default = "default_true")]
 	pub autostart: bool,
+	#[serde(default)]
+	pub ports: Vec<u16>,
 }

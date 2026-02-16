@@ -1,4 +1,6 @@
 use crate::output::OutputCapture;
+use libproc::processes::{pids_by_type, ProcFilter};
+use netstat2::*;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -45,6 +47,15 @@ impl Supervisor {
 	pub async fn status(self: &Arc<Self>) -> Vec<ServiceStatus> {
 		let entries = config::load_service_entries();
 		let services = self.services.read().await;
+		let running_pids: Vec<u32> = services
+			.values()
+			.flat_map(|s| s.processes.values())
+			.filter_map(|mp| match &mp.state {
+				ProcessState::Running { pid, .. } => Some(*pid),
+				_ => None,
+			})
+			.collect();
+		let pid_ports = listening_ports_for_pids(&running_pids);
 		let mut result = Vec::new();
 
 		for (name, entry) in &entries {
@@ -52,14 +63,22 @@ impl Supervisor {
 				let processes = managed
 					.processes
 					.iter()
-					.map(|(pname, mp)| ProcessStatus {
-						name: pname.clone(),
-						state: mp.state.clone(),
-						pid: match &mp.state {
+					.map(|(pname, mp)| {
+						let pid = match &mp.state {
 							ProcessState::Running { pid, .. } => Some(*pid),
 							_ => None,
-						},
-						autostart: mp.def.autostart,
+						};
+						let ports = pid
+							.and_then(|p| pid_ports.get(&p))
+							.cloned()
+							.unwrap_or_default();
+						ProcessStatus {
+							name: pname.clone(),
+							state: mp.state.clone(),
+							pid,
+							autostart: mp.def.autostart,
+							ports,
+						}
 					})
 					.collect();
 				result.push(ServiceStatus {
@@ -77,6 +96,7 @@ impl Supervisor {
 						state: ProcessState::Stopped,
 						pid: None,
 						autostart: p.autostart,
+						ports: vec![],
 					})
 					.collect();
 				result.push(ServiceStatus {
@@ -454,6 +474,58 @@ async fn update_state(supervisor: &Arc<Supervisor>, service: &str, process: &str
 			mp.state = state;
 		}
 	}
+}
+
+/// Get listening TCP ports for a set of managed process PIDs.
+/// First checks if the PID itself owns the port (fast path).
+/// Falls back to expanding the process group to find child listeners.
+fn listening_ports_for_pids(target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
+	let af = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+	let proto = ProtocolFlags::TCP;
+	let sockets = match get_sockets_info(af, proto) {
+		Ok(s) => s,
+		Err(_) => return HashMap::new(),
+	};
+
+	let mut all_ports: HashMap<u32, Vec<u16>> = HashMap::new();
+	for si in &sockets {
+		if let ProtocolSocketInfo::Tcp(ref tcp) = si.protocol_socket_info {
+			if tcp.state == TcpState::Listen {
+				for pid in &si.associated_pids {
+					let ports = all_ports.entry(*pid).or_default();
+					if !ports.contains(&tcp.local_port) {
+						ports.push(tcp.local_port);
+					}
+				}
+			}
+		}
+	}
+
+	let mut result: HashMap<u32, Vec<u16>> = HashMap::new();
+	for &pid in target_pids {
+		if let Some(ports) = all_ports.get(&pid) {
+			result.insert(pid, ports.clone());
+			continue;
+		}
+		// PID is likely `sh -c ...`; check its process group for child listeners
+		let group_pids = pids_by_type(ProcFilter::ByProgramGroup { pgrpid: pid })
+			.unwrap_or_default();
+		let mut ports: Vec<u16> = Vec::new();
+		for gpid in &group_pids {
+			if let Some(p) = all_ports.get(gpid) {
+				for port in p {
+					if !ports.contains(port) {
+						ports.push(*port);
+					}
+				}
+			}
+		}
+		if !ports.is_empty() {
+			ports.sort();
+			result.insert(pid, ports);
+		}
+	}
+	result
 }
 
 fn kill_process_tree(pid: u32) {

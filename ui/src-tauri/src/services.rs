@@ -17,6 +17,8 @@ pub struct ProcessInfo {
     pub name: String,
     pub pid: Option<u32>,
     pub status: String,
+    pub autostart: bool,
+    pub ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,7 +144,7 @@ impl Service {
                 let name = parts.first().unwrap_or(&"unknown").to_string();
                 let pid = parts.get(1).and_then(|p| p.parse::<u32>().ok());
                 let status = parts.get(2).unwrap_or(&"unknown").to_string();
-                ProcessInfo { name, pid, status }
+                ProcessInfo { name, pid, status, autostart: true, ports: vec![] }
             })
             .collect()
     }

@@ -333,7 +333,12 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 			("●".red().to_string(), format!("exit {}", exit_code), "-".to_string(), "failed".red().to_string())
 		}
 	};
-	println!("{} {:<width$} {:<8} {:<8} {}", circle, proc.name, uptime, pid, label, width = name_width);
+	let ports = if proc.ports.is_empty() {
+		String::new()
+	} else {
+		format!(" {}", proc.ports.iter().map(|p| format!(":{}", p)).collect::<Vec<_>>().join(","))
+	};
+	println!("{} {:<width$} {:<8} {:<8} {}{}", circle, proc.name, uptime, pid, label, ports, width = name_width);
 }
 
 fn cmd_start(args: &[String]) {

@@ -252,6 +252,9 @@
                             ></span>
                             <span class="sub-name">{proc.name}</span>
                             <span class="sub-status">{proc.status}</span>
+                            {#if proc.ports?.length}
+                                <span class="sub-ports">{proc.ports.map(p => `:${p}`).join(', ')}</span>
+                            {/if}
                         </span>
                         <span class="sub-actions">
                             {#if proc.pid}
@@ -540,6 +543,12 @@
         font-size: 0.75em;
         font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
         color: #555;
+    }
+
+    .sub-ports {
+        font-size: 0.75em;
+        font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+        color: #6688aa;
     }
 
     .sub-actions {

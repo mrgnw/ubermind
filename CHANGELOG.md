@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-02-16
+
+### Added
+
+- **Port detection in status**: Running processes now show which TCP ports they're listening on
+  - Automatically detects listening ports via system APIs (no configuration needed)
+  - Resolves child process ports through process group expansion (handles `sh -c` wrappers)
+  - Displayed in CLI status output and web UI
+  - Available in HTTP API responses (`ports` field on process info)
+
 ## [0.6.4] - 2026-02-16
 
 ### Added
