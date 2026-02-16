@@ -57,6 +57,7 @@ impl Supervisor {
 							ProcessState::Running { pid, .. } => Some(*pid),
 							_ => None,
 						},
+						autostart: mp.def.autostart,
 					})
 					.collect();
 				result.push(ServiceStatus {
@@ -65,17 +66,33 @@ impl Supervisor {
 					processes,
 				});
 			} else {
+				let service = config::load_service(entry, &self.config.defaults);
+				let processes = service
+					.processes
+					.iter()
+					.map(|p| ProcessStatus {
+						name: p.name.clone(),
+						state: ProcessState::Stopped,
+						pid: None,
+						autostart: p.autostart,
+					})
+					.collect();
 				result.push(ServiceStatus {
 					name: name.clone(),
 					dir: entry.dir.clone(),
-					processes: Vec::new(),
+					processes,
 				});
 			}
 		}
 		result
 	}
 
-	pub async fn start_service(self: &Arc<Self>, name: &str) -> Result<String, String> {
+	pub async fn start_service_filtered(
+		self: &Arc<Self>,
+		name: &str,
+		all: bool,
+		processes: &[String],
+	) -> Result<String, String> {
 		let entries = config::load_service_entries();
 		let entry = entries.get(name).ok_or_else(|| format!("unknown service: {}", name))?;
 
@@ -96,6 +113,14 @@ impl Supervisor {
 		let mut managed_processes = HashMap::new();
 
 		for proc_def in &service.processes {
+			let should_start = if !processes.is_empty() {
+				processes.iter().any(|p| p == &proc_def.name)
+			} else if all {
+				true
+			} else {
+				proc_def.autostart
+			};
+
 			let output = OutputCapture::new(name, &proc_def.name, self.config.logs.max_size_bytes);
 			let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
 
@@ -109,15 +134,17 @@ impl Supervisor {
 			};
 			managed_processes.insert(proc_def.name.clone(), mp);
 
-			let sup = Arc::clone(self);
-			let service_name = name.to_string();
-			let process_name = proc_def.name.clone();
-			let proc_def_clone = proc_def.clone();
-			let dir = entry.dir.clone();
+			if should_start {
+				let sup = Arc::clone(self);
+				let service_name = name.to_string();
+				let process_name = proc_def.name.clone();
+				let proc_def_clone = proc_def.clone();
+				let dir = entry.dir.clone();
 
-			tokio::spawn(async move {
-				run_process_loop(sup, service_name, process_name, proc_def_clone, dir, output, cancel_rx).await;
-			});
+				tokio::spawn(async move {
+					run_process_loop(sup, service_name, process_name, proc_def_clone, dir, output, cancel_rx).await;
+				});
+			}
 		}
 
 		{
@@ -161,10 +188,15 @@ impl Supervisor {
 		Ok(format!("{}: stopped", name))
 	}
 
-	pub async fn reload_service(self: &Arc<Self>, name: &str) -> Result<String, String> {
+	pub async fn reload_service_filtered(
+		self: &Arc<Self>,
+		name: &str,
+		all: bool,
+		processes: &[String],
+	) -> Result<String, String> {
 		let _ = self.stop_service(name).await;
 		tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-		self.start_service(name).await
+		self.start_service_filtered(name, all, processes).await
 	}
 
 	pub async fn restart_process(self: &Arc<Self>, service: &str, process: &str) -> Result<String, String> {

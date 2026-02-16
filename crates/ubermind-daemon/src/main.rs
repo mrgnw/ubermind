@@ -139,10 +139,10 @@ async fn handle_request(supervisor: &Arc<supervisor::Supervisor>, request: Reque
 			let services = supervisor.status().await;
 			Response::Status { services }
 		}
-		Request::Start { names } => {
+		Request::Start { names, all, processes } => {
 			let mut messages = Vec::new();
 			for name in &names {
-				match supervisor.start_service(name).await {
+				match supervisor.start_service_filtered(name, all, &processes).await {
 					Ok(msg) => messages.push(msg),
 					Err(e) => return Response::Error { message: e },
 				}
@@ -163,10 +163,10 @@ async fn handle_request(supervisor: &Arc<supervisor::Supervisor>, request: Reque
 				message: Some(messages.join("\n")),
 			}
 		}
-		Request::Reload { names } => {
+		Request::Reload { names, all, processes } => {
 			let mut messages = Vec::new();
 			for name in &names {
-				match supervisor.reload_service(name).await {
+				match supervisor.reload_service_filtered(name, all, &processes).await {
 					Ok(msg) => messages.push(msg),
 					Err(e) => return Response::Error { message: e },
 				}

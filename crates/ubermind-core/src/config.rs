@@ -121,6 +121,7 @@ pub struct ProcessOverride {
 	pub restart: Option<bool>,
 	pub max_retries: Option<u32>,
 	pub restart_delay: Option<u64>,
+	pub autostart: Option<bool>,
 	#[serde(default)]
 	pub env: HashMap<String, String>,
 }
@@ -223,12 +224,27 @@ pub fn load_service(entry: &ServiceEntry, defaults: &DefaultsConfig) -> Service 
 	if let Ok(content) = std::fs::read_to_string(&procfile_path) {
 		for line in content.lines() {
 			let line = line.trim();
-			if line.is_empty() || line.starts_with('#') {
+			if line.is_empty() {
 				continue;
 			}
-			if let Some(pos) = line.find(':') {
-				let name = line[..pos].trim().to_string();
-				let command = line[pos + 1..].trim().to_string();
+
+			let (proc_line, autostart) = if line.starts_with('#') {
+				let after_hash = line[1..].trim_start();
+				if let Some(rest) = after_hash.strip_prefix('~') {
+					(rest.trim(), false)
+				} else {
+					continue;
+				}
+			} else {
+				(line, true)
+			};
+
+			if let Some(pos) = proc_line.find(':') {
+				let name = proc_line[..pos].trim().to_string();
+				let command = proc_line[pos + 1..].trim().to_string();
+				if name.is_empty() || command.is_empty() {
+					continue;
+				}
 				processes.push(ProcessDef {
 					name,
 					command,
@@ -236,6 +252,7 @@ pub fn load_service(entry: &ServiceEntry, defaults: &DefaultsConfig) -> Service 
 					max_retries: defaults.max_retries,
 					restart_delay_secs: defaults.restart_delay,
 					env: defaults.env.clone(),
+					autostart,
 				});
 			}
 		}
@@ -258,6 +275,9 @@ pub fn load_service(entry: &ServiceEntry, defaults: &DefaultsConfig) -> Service 
 					if let Some(r) = ov.restart_delay {
 						proc.restart_delay_secs = r;
 					}
+					if let Some(a) = ov.autostart {
+						proc.autostart = a;
+					}
 					proc.env.extend(ov.env.clone());
 				}
 			}
@@ -275,6 +295,7 @@ pub fn load_service(entry: &ServiceEntry, defaults: &DefaultsConfig) -> Service 
 								e.extend(ov.env.clone());
 								e
 							},
+							autostart: ov.autostart.unwrap_or(true),
 						});
 					}
 				}

@@ -7,6 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use rust_embed::RustEmbed;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
@@ -63,6 +64,7 @@ struct ProcessInfo {
 	name: String,
 	pid: Option<u32>,
 	status: String,
+	autostart: bool,
 }
 
 #[derive(Serialize)]
@@ -126,6 +128,7 @@ async fn service_detail(
 				name: p.name,
 				pid: p.pid,
 				status: status_str,
+				autostart: p.autostart,
 			}
 		})
 		.collect();
@@ -141,10 +144,12 @@ async fn service_detail(
 async fn start_service(
 	State(state): State<AppState>,
 	Path(name): Path<String>,
+	axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<ActionResponse>, (StatusCode, Json<ErrorResponse>)> {
+	let all = params.get("all").map(|v| v == "true" || v == "1").unwrap_or(false);
 	state
 		.supervisor
-		.start_service(&name)
+		.start_service_filtered(&name, all, &[])
 		.await
 		.map(|msg| Json(ActionResponse { message: msg }))
 		.map_err(|e| {
@@ -178,7 +183,7 @@ async fn reload_service(
 ) -> Result<Json<ActionResponse>, (StatusCode, Json<ErrorResponse>)> {
 	state
 		.supervisor
-		.reload_service(&name)
+		.reload_service_filtered(&name, false, &[])
 		.await
 		.map(|msg| Json(ActionResponse { message: msg }))
 		.map_err(|e| {

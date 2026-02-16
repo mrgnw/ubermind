@@ -21,6 +21,8 @@ pub struct ProcessDef {
 	pub restart_delay_secs: u64,
 	#[serde(default)]
 	pub env: HashMap<String, String>,
+	#[serde(default = "default_true")]
+	pub autostart: bool,
 }
 
 fn default_true() -> bool {
@@ -65,4 +67,6 @@ pub struct ProcessStatus {
 	pub name: String,
 	pub state: ProcessState,
 	pub pid: Option<u32>,
+	#[serde(default = "default_true")]
+	pub autostart: bool,
 }

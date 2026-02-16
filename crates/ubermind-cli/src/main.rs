@@ -116,6 +116,11 @@ fn print_usage() {
 	eprintln!("  ub status matrix             show all processes in matrix");
 	eprintln!("  ub status matrix.automation  show only the automation process");
 	eprintln!();
+	eprintln!("optional processes: prefix with #~ in Procfile to skip on start");
+	eprintln!("  #~ ui: pnpm dev              defined but not started by default");
+	eprintln!("  ub start myapp.ui            explicitly start an optional process");
+	eprintln!("  ub start myapp --all         start all processes including optional");
+	eprintln!();
 	eprintln!("context-aware: run from a project directory to auto-target it");
 	eprintln!();
 	eprintln!("examples:");
@@ -305,6 +310,9 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 		ProcessState::Running { pid, uptime_secs } => {
 			("●".green().to_string(), format_uptime(*uptime_secs), format!("{}", pid), "on".green().to_string())
 		}
+		ProcessState::Stopped if !proc.autostart => {
+			("○".dimmed().to_string(), "-".to_string(), "-".to_string(), "optional".dimmed().to_string())
+		}
 		ProcessState::Stopped => {
 			("●".red().to_string(), "-".to_string(), "-".to_string(), "off".red().to_string())
 		}
@@ -321,14 +329,39 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 fn cmd_start(args: &[String]) {
 	let (watch, rest) = parse_watch_opts(args);
 	let entries = config::load_service_entries();
-	let names = resolve_target_names(&rest, &entries);
 
-	if names.is_empty() {
+	let start_all = rest.iter().any(|a| is_all_flag(a));
+	let rest: Vec<String> = rest.into_iter().filter(|a| !is_all_flag(a)).collect();
+
+	let mut target_processes: Vec<String> = Vec::new();
+	let resolved: Vec<String> = if rest.is_empty() {
+		resolve_target_names(&[], &entries)
+	} else {
+		let mut service_names = Vec::new();
+		for arg in &rest {
+			let (svc, proc) = resolve_dot_target(arg, &entries);
+			if !service_names.contains(&svc) {
+				service_names.push(svc);
+			}
+			if let Some(p) = proc {
+				if !target_processes.contains(&p) {
+					target_processes.push(p);
+				}
+			}
+		}
+		service_names
+	};
+
+	if resolved.is_empty() {
 		eprintln!("no services to start");
 		std::process::exit(1);
 	}
 
-	let response = send_request(&Request::Start { names: names.clone() });
+	let response = send_request(&Request::Start {
+		names: resolved.clone(),
+		all: start_all || !target_processes.is_empty(),
+		processes: target_processes,
+	});
 	match response {
 		Response::Ok { message } => {
 			if let Some(msg) = message {
@@ -338,9 +371,9 @@ fn cmd_start(args: &[String]) {
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
 			if watch.enabled {
-				watch_status(&names, &watch);
+				watch_status(&resolved, &watch);
 			} else {
-				render_status(&names);
+				render_status(&resolved);
 			}
 		}
 		Response::Error { message } => {
@@ -380,6 +413,9 @@ fn cmd_stop(args: &[String]) {
 fn cmd_reload(args: &[String]) {
 	let (watch, rest) = parse_watch_opts(args);
 	let entries = config::load_service_entries();
+
+	let reload_all = rest.iter().any(|a| is_all_flag(a));
+	let rest: Vec<String> = rest.into_iter().filter(|a| !is_all_flag(a)).collect();
 	let names = resolve_target_names(&rest, &entries);
 
 	if names.is_empty() {
@@ -387,7 +423,11 @@ fn cmd_reload(args: &[String]) {
 		std::process::exit(1);
 	}
 
-	let response = send_request(&Request::Reload { names: names.clone() });
+	let response = send_request(&Request::Reload {
+		names: names.clone(),
+		all: reload_all,
+		processes: Vec::new(),
+	});
 	match response {
 		Response::Ok { message } => {
 			if let Some(msg) = message {
@@ -717,13 +757,20 @@ fn cmd_show(args: &[String]) {
 			if line_trimmed.is_empty() {
 				println!();
 			} else if line_trimmed.starts_with('#') {
-				// Comments in dim
-				println!("{}", line.dimmed());
+				let after_hash = line_trimmed[1..].trim_start();
+				if let Some(rest) = after_hash.strip_prefix('~') {
+					let rest = rest.trim();
+					if let Some((name, cmd)) = rest.split_once(':') {
+						println!("{} {}:{}", "~".dimmed(), name.cyan().dimmed(), cmd.dimmed());
+					} else {
+						println!("{}", line.dimmed());
+					}
+				} else {
+					println!("{}", line.dimmed());
+				}
 			} else if let Some((name, cmd)) = line.split_once(':') {
-				// Process name in cyan, command in default color
 				println!("{}:{}", name.cyan(), cmd);
 			} else {
-				// Fallback for malformed lines
 				println!("{}", line);
 			}
 		}

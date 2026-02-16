@@ -4,9 +4,21 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
-	Start { names: Vec<String> },
+	Start {
+		names: Vec<String>,
+		#[serde(default)]
+		all: bool,
+		#[serde(default)]
+		processes: Vec<String>,
+	},
 	Stop { names: Vec<String> },
-	Reload { names: Vec<String> },
+	Reload {
+		names: Vec<String>,
+		#[serde(default)]
+		all: bool,
+		#[serde(default)]
+		processes: Vec<String>,
+	},
 	Restart { service: String, process: String },
 	Kill { service: String, process: String },
 	Status,
