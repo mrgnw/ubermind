@@ -50,7 +50,5 @@ No Rust crate exists for this. The ecosystem has:
 - [x] `cargo test -p ubermind` — 2/2 tests pass
 
 ## Future work
-- Publish to crates.io
-- `kagaya` — process supervisor crate layered on top of muzan
-- More tests for muzan itself
-- Example binary showing minimal muzan usage
+- Publish muzan + kagaya to crates.io
+- ~~`kagaya` — process supervisor crate~~ done (see `todos/kagaya-crate.md`)
