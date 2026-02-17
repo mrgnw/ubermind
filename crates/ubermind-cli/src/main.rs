@@ -355,13 +355,31 @@ fn cmd_start(args: &[String]) {
 		let mut service_names = Vec::new();
 		for arg in &rest {
 			let (svc, proc) = resolve_dot_target(arg, &entries);
-			if !service_names.contains(&svc) {
-				service_names.push(svc);
-			}
 			if let Some(p) = proc {
+				// Dot-syntax: service.process or .process
+				if !service_names.contains(&svc) {
+					service_names.push(svc);
+				}
 				if !target_processes.contains(&p) {
 					target_processes.push(p);
 				}
+			} else if entries.contains_key(&svc) {
+				// Known service name
+				if !service_names.contains(&svc) {
+					service_names.push(svc);
+				}
+			} else if let Some(current) = get_current_project(&entries) {
+				// Not a service — treat as process name in current project
+				if !service_names.contains(&current) {
+					service_names.push(current);
+				}
+				if !target_processes.contains(&svc) {
+					target_processes.push(svc);
+				}
+			} else {
+				eprintln!("unknown service: {}", svc);
+				eprintln!("registered services: {}", entries.keys().cloned().collect::<Vec<_>>().join(", "));
+				std::process::exit(1);
 			}
 		}
 		service_names
@@ -499,7 +517,7 @@ fn cmd_restart(args: &[String]) {
 		reload_extra.push(watch.interval.to_string());
 	}
 
-	// Context-aware: if no args or first arg is not a service, check if we're in a project
+	// Context-aware: supports dot-syntax (.process, service.process), bare process names, and service names
 	let (service, process) = if rest.is_empty() {
 		// No args - reload current service
 		if let Some(current) = get_current_project(&entries) {
@@ -512,15 +530,18 @@ fn cmd_restart(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else if rest.len() == 1 {
-		// One arg - could be service name or process name in current service
-		if entries.contains_key(&rest[0]) {
+		// Check for dot-syntax first (.process or service.process)
+		let (svc, proc) = resolve_dot_target(&rest[0], &entries);
+		if let Some(proc_name) = proc {
+			(svc, Some(proc_name))
+		} else if entries.contains_key(&svc) {
 			// It's a service name - reload it
-			let mut reload_args = vec![rest[0].clone()];
+			let mut reload_args = vec![svc];
 			reload_args.extend(reload_extra);
 			return cmd_reload(&reload_args);
 		} else if let Some(current) = get_current_project(&entries) {
 			// Treat arg as process name in current service
-			(current, Some(rest[0].clone()))
+			(current, Some(svc))
 		} else {
 			eprintln!("unknown service: {}", rest[0]);
 			eprintln!("registered services: {}", entries.keys().cloned().collect::<Vec<_>>().join(", "));
@@ -528,7 +549,8 @@ fn cmd_restart(args: &[String]) {
 		}
 	} else {
 		// Two or more args - first is service, second is process
-		(rest[0].clone(), Some(rest[1].clone()))
+		let (svc, proc) = resolve_dot_target(&rest[0], &entries);
+		(svc, proc.or_else(|| Some(rest[1].clone())))
 	};
 
 	if let Some(process_name) = process {

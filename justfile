@@ -3,6 +3,23 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 version := `grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'`
 tag := "v" + version
 
+# Bump version: just bump patch|minor|major
+bump part="patch":
+	#!/bin/bash
+	set -euo pipefail
+	current="{{version}}"
+	IFS='.' read -r major minor patch <<< "${current}"
+	case "{{part}}" in
+		patch) patch=$((patch + 1)) ;;
+		minor) minor=$((minor + 1)); patch=0 ;;
+		major) major=$((major + 1)); minor=0; patch=0 ;;
+		*) echo "usage: just bump [patch|minor|major]"; exit 1 ;;
+	esac
+	next="${major}.${minor}.${patch}"
+	sed -i '' "s/^version = \"${current}\"/version = \"${next}\"/" Cargo.toml
+	sed -i '' "s/ubermind-core = { path = \"crates\/ubermind-core\", version = \"${current}\"/ubermind-core = { path = \"crates\/ubermind-core\", version = \"${next}\"/" Cargo.toml
+	echo "${current} -> ${next}"
+
 # Build all workspace crates (debug)
 build:
 	cargo build --workspace

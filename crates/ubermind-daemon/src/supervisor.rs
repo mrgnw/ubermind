@@ -361,7 +361,7 @@ async fn run_process_loop(
 		let cancel_clone = cancel.clone();
 		let uptime_handle = tokio::spawn(async move {
 			loop {
-				tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+				tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 				if *cancel_clone.borrow() {
 					return;
 				}
