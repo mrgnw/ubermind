@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ubermind-cli"]
+members = ["crates/muzan", "crates/ubermind-cli"]
 resolver = "2"
 
 [workspace.package]

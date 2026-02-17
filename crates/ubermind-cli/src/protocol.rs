@@ -1,6 +1,8 @@
 use crate::types::ServiceStatus;
 use serde::{Deserialize, Serialize};
 
+pub use muzan::DaemonPaths;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
@@ -38,36 +40,22 @@ pub enum Response {
 	Pong,
 }
 
-pub const SOCKET_NAME: &str = "daemon.sock";
+fn daemon_paths() -> DaemonPaths {
+	DaemonPaths::new("ubermind")
+}
 
 pub fn socket_path() -> std::path::PathBuf {
-	state_dir().join(SOCKET_NAME)
+	daemon_paths().socket_path()
 }
 
 pub fn pid_path() -> std::path::PathBuf {
-	state_dir().join("daemon.pid")
+	daemon_paths().pid_path()
 }
 
 pub fn state_dir() -> std::path::PathBuf {
-	if let Ok(dir) = std::env::var("XDG_STATE_HOME") {
-		std::path::PathBuf::from(dir).join("ubermind")
-	} else if let Some(home) = home_dir() {
-		home.join(".local").join("state").join("ubermind")
-	} else {
-		std::path::PathBuf::from("/tmp/ubermind")
-	}
+	daemon_paths().state_dir()
 }
 
 pub fn config_dir() -> std::path::PathBuf {
-	if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
-		std::path::PathBuf::from(dir).join("ubermind")
-	} else if let Some(home) = home_dir() {
-		home.join(".config").join("ubermind")
-	} else {
-		std::path::PathBuf::from("/tmp/ubermind/config")
-	}
-}
-
-fn home_dir() -> Option<std::path::PathBuf> {
-	std::env::var("HOME").ok().map(std::path::PathBuf::from)
+	daemon_paths().config_dir()
 }
