@@ -32,7 +32,7 @@ pub fn cmd_launchd(args: &[String]) {
 fn print_launchd_usage() {
 	eprintln!("kagaya launchd — manage macOS launchd agents");
 	eprintln!();
-	eprintln!("usage: ub launchd [command] [options]");
+	eprintln!("usage: ky launchd [command] [options]");
 	eprintln!();
 	eprintln!("commands:");
 	eprintln!("  list [--all] [--global]       List agents (default: user plist agents)");
@@ -465,7 +465,7 @@ fn cmd_status(args: &[String]) {
 
 fn cmd_start(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd start <label>");
+		eprintln!("usage: ky launchd start <label>");
 		std::process::exit(1);
 	}
 
@@ -552,7 +552,7 @@ fn cmd_start(args: &[String]) {
 
 fn cmd_stop(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd stop <label>");
+		eprintln!("usage: ky launchd stop <label>");
 		std::process::exit(1);
 	}
 
@@ -611,7 +611,7 @@ fn cmd_stop(args: &[String]) {
 
 fn cmd_restart(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd restart <label>");
+		eprintln!("usage: ky launchd restart <label>");
 		std::process::exit(1);
 	}
 
@@ -661,7 +661,7 @@ fn cmd_restart(args: &[String]) {
 
 fn cmd_logs(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd logs <label>");
+		eprintln!("usage: ky launchd logs <label>");
 		std::process::exit(1);
 	}
 
@@ -744,7 +744,7 @@ fn cmd_logs(args: &[String]) {
 
 fn cmd_show(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd show <label>");
+		eprintln!("usage: ky launchd show <label>");
 		std::process::exit(1);
 	}
 
@@ -830,7 +830,7 @@ fn cmd_show(args: &[String]) {
 fn cmd_create(args: &[String]) {
 	// Parse: create <label> [options] -- <command...>
 	if args.is_empty() {
-		eprintln!("usage: ub launchd create <label> [options] -- <command...>");
+		eprintln!("usage: ky launchd create <label> [options] -- <command...>");
 		eprintln!();
 		eprintln!("options:");
 		eprintln!("  --dir <path>           Working directory (default: current dir)");
@@ -853,7 +853,7 @@ fn cmd_create(args: &[String]) {
 		Some(pos) => (&args[1..pos], &args[pos + 1..]),
 		None => {
 			eprintln!("error: missing -- separator before command");
-			eprintln!("usage: ub launchd create {} -- <command...>", label_short);
+			eprintln!("usage: ky launchd create {} -- <command...>", label_short);
 			std::process::exit(1);
 		}
 	};
@@ -906,7 +906,7 @@ fn cmd_create(args: &[String]) {
 
 	if plist_path.exists() {
 		eprintln!("error: plist already exists: {}", plist_path.display());
-		eprintln!("use 'ub launchd edit {}' to modify, or 'ub launchd remove {}' first", label_short, label_short);
+		eprintln!("use 'ky launchd edit {}' to modify, or 'ky launchd remove {}' first", label_short, label_short);
 		std::process::exit(1);
 	}
 
@@ -1004,7 +1004,7 @@ fn cmd_create(args: &[String]) {
 
 fn cmd_edit(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd edit <label>");
+		eprintln!("usage: ky launchd edit <label>");
 		std::process::exit(1);
 	}
 
@@ -1081,7 +1081,7 @@ fn cmd_edit(args: &[String]) {
 
 fn cmd_remove(args: &[String]) {
 	if args.is_empty() {
-		eprintln!("usage: ub launchd remove <label> [--yes]");
+		eprintln!("usage: ky launchd remove <label> [--yes]");
 		std::process::exit(1);
 	}
 

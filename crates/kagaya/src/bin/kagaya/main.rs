@@ -55,7 +55,7 @@ fn main() {
 			match args.get(1).map(|s| s.as_str()) {
 				Some("update") => self_update::cmd_self_update(),
 				_ => {
-					eprintln!("usage: ub self update");
+					eprintln!("usage: ky self update");
 					std::process::exit(1);
 				}
 			}
@@ -136,16 +136,16 @@ fn print_usage() {
 
 	eprintln!("{}", "targeting".cyan().bold());
 	eprintln!("  Use {} dot syntax to target a specific process:", "name.process".bold());
-	eprintln!("    ub status matrix.automation");
+	eprintln!("    ky status matrix.automation");
 	eprintln!("  Context-aware: run from a project dir to auto-target it");
-	eprintln!("    ub restart api             restart 'api' in current project");
-	eprintln!("    ub restart appligator api  target a specific project");
+	eprintln!("    ky restart api             restart 'api' in current project");
+	eprintln!("    ky restart appligator api  target a specific project");
 	eprintln!();
 
 	eprintln!("{}", "shortcuts".cyan().bold());
-	eprintln!("    ub                         status (current project or all)");
-	eprintln!("    ub all                     status --all");
-	eprintln!("    ub --watch                 status --watch (live refresh)");
+	eprintln!("    ky                         status (current project or all)");
+	eprintln!("    ky all                     status --all");
+	eprintln!("    ky --watch                 status --watch (live refresh)");
 }
 
 // --- Config management (no daemon needed) ---
@@ -165,9 +165,9 @@ fn cmd_init() {
 
 	eprintln!();
 	eprintln!("getting started:");
-	eprintln!("  1. add projects: ub add (from a project dir)");
-	eprintln!("  2. start: ub start [name|--all]");
-	eprintln!("  3. check: ub status");
+	eprintln!("  1. add projects: ky add (from a project dir)");
+	eprintln!("  2. start: ky start [name|--all]");
+	eprintln!("  3. check: ky status");
 }
 
 fn cmd_add(args: &[String]) {
@@ -467,7 +467,7 @@ fn cmd_restart(args: &[String]) {
 			reload_args.extend(reload_extra);
 			return cmd_reload(&reload_args);
 		} else {
-			eprintln!("usage: ub restart <service> [process]");
+			eprintln!("usage: ky restart <service> [process]");
 			eprintln!("or run from a registered project directory");
 			std::process::exit(1);
 		}
@@ -524,8 +524,8 @@ fn cmd_logs(args: &[String]) {
 		if let Some(current) = get_current_project(&svc_entries) {
 			(current, None)
 		} else {
-			eprintln!("usage: ub logs <service> [process]");
-			eprintln!("       ub logs <service.process>");
+			eprintln!("usage: ky logs <service> [process]");
+			eprintln!("       ky logs <service.process>");
 			std::process::exit(1);
 		}
 	} else {
@@ -588,8 +588,8 @@ fn cmd_tail(args: &[String]) {
 		if let Some(current) = get_current_project(&svc_entries) {
 			(current, None)
 		} else {
-			eprintln!("usage: ub tail <service> [process]");
-			eprintln!("       ub tail <service.process>");
+			eprintln!("usage: ky tail <service> [process]");
+			eprintln!("       ky tail <service.process>");
 			std::process::exit(1);
 		}
 	} else {
@@ -645,8 +645,8 @@ fn cmd_echo(args: &[String]) {
 		if let Some(current) = get_current_project(&svc_entries) {
 			(current, None)
 		} else {
-			eprintln!("usage: ub echo <service> [process]");
-			eprintln!("       ub echo <service.process>");
+			eprintln!("usage: ky echo <service> [process]");
+			eprintln!("       ky echo <service.process>");
 			std::process::exit(1);
 		}
 	} else {
@@ -801,7 +801,7 @@ fn cmd_daemon(args: &[String]) {
 			}
 		}
 		_ => {
-			eprintln!("usage: ub daemon [start|stop|status|run]");
+			eprintln!("usage: ky daemon [start|stop|status|run]");
 		}
 	}
 }
