@@ -15,6 +15,20 @@ pub async fn run_socket_server<Req, Resp, F, Fut>(
 	F: Fn(Req) -> Fut + Send + Sync + 'static,
 	Fut: Future<Output = Resp> + Send,
 {
+	run_socket_server_with_error(paths, handler, None::<fn(String) -> Resp>).await;
+}
+
+pub async fn run_socket_server_with_error<Req, Resp, F, Fut, E>(
+	paths: &DaemonPaths,
+	handler: F,
+	on_parse_error: Option<E>,
+) where
+	Req: DeserializeOwned + Send + 'static,
+	Resp: Serialize + Send + 'static,
+	F: Fn(Req) -> Fut + Send + Sync + 'static,
+	Fut: Future<Output = Resp> + Send,
+	E: Fn(String) -> Resp + Send + Sync + 'static,
+{
 	let socket_path = paths.socket_path();
 
 	let listener = match UnixListener::bind(&socket_path) {
@@ -28,6 +42,7 @@ pub async fn run_socket_server<Req, Resp, F, Fut>(
 	tracing::info!("listening on {}", socket_path.display());
 
 	let handler = Arc::new(handler);
+	let on_parse_error = on_parse_error.map(Arc::new);
 
 	loop {
 		let (stream, _) = match listener.accept().await {
@@ -39,20 +54,23 @@ pub async fn run_socket_server<Req, Resp, F, Fut>(
 		};
 
 		let handler = Arc::clone(&handler);
+		let on_parse_error = on_parse_error.clone();
 		tokio::spawn(async move {
-			handle_connection::<Req, Resp, _, _>(stream, handler).await;
+			handle_connection(stream, handler, on_parse_error).await;
 		});
 	}
 }
 
-async fn handle_connection<Req, Resp, F, Fut>(
+async fn handle_connection<Req, Resp, F, Fut, E>(
 	stream: tokio::net::UnixStream,
 	handler: Arc<F>,
+	on_parse_error: Option<Arc<E>>,
 ) where
 	Req: DeserializeOwned + Send + 'static,
 	Resp: Serialize + Send + 'static,
 	F: Fn(Req) -> Fut + Send + Sync + 'static,
 	Fut: Future<Output = Resp> + Send,
+	E: Fn(String) -> Resp + Send + Sync + 'static,
 {
 	let (reader, mut writer) = stream.into_split();
 	let mut lines = BufReader::new(reader).lines();
@@ -61,9 +79,17 @@ async fn handle_connection<Req, Resp, F, Fut>(
 		let request: Req = match serde_json::from_str(&line) {
 			Ok(r) => r,
 			Err(e) => {
-				tracing::warn!("invalid request: {}", e);
-				// Can't send a typed error since we don't know Resp's error variant.
-				// Just drop the bad request.
+				let err_msg = format!("invalid request: {}", e);
+				tracing::warn!("{}", err_msg);
+				if let Some(ref error_fn) = on_parse_error {
+					let resp = error_fn(err_msg);
+					if let Ok(mut data) = serde_json::to_vec(&resp) {
+						data.push(b'\n');
+						if writer.write_all(&data).await.is_err() {
+							break;
+						}
+					}
+				}
 				continue;
 			}
 		};

@@ -7,8 +7,7 @@ mod self_update;
 mod types;
 
 use std::collections::BTreeMap;
-use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
@@ -17,6 +16,10 @@ use protocol::{Request, Response};
 use types::*;
 use owo_colors::OwoColorize;
 use toml;
+
+fn daemon_paths() -> muzan::DaemonPaths {
+	muzan::DaemonPaths::new("ubermind")
+}
 
 fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();
@@ -228,61 +231,30 @@ fn cmd_add(args: &[String]) {
 
 // --- Daemon communication ---
 
-fn connect_daemon() -> Option<UnixStream> {
-	let socket_path = protocol::socket_path();
-	UnixStream::connect(&socket_path).ok()
-}
-
-fn ensure_daemon() -> UnixStream {
-	if let Some(stream) = connect_daemon() {
-		return stream;
-	}
-
-	eprintln!("starting daemon...");
-	let daemon_bin = find_daemon_binary();
-
-	let mut cmd = Command::new(&daemon_bin);
-	cmd.args(["daemon", "run"])
-		.stdout(std::process::Stdio::null())
-		.stderr(std::process::Stdio::null());
-
-	match cmd.spawn() {
-		Ok(_) => {}
-		Err(e) => {
-			eprintln!("error: failed to start daemon: {}", e);
-			eprintln!("binary: {}", daemon_bin.display());
-			std::process::exit(1);
-		}
-	}
-
-	for _ in 0..50 {
-		std::thread::sleep(std::time::Duration::from_millis(100));
-		if let Some(stream) = connect_daemon() {
-			return stream;
-		}
-	}
-
-	eprintln!("error: daemon did not start in time");
-	std::process::exit(1);
-}
-
-fn find_daemon_binary() -> PathBuf {
-	std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ubermind"))
+fn connect_daemon() -> Option<muzan::DaemonClient<Request, Response>> {
+	muzan::DaemonClient::connect(&daemon_paths()).ok()
 }
 
 fn send_request(request: &Request) -> Response {
-	let mut stream = ensure_daemon();
-	let mut data = serde_json::to_vec(request).unwrap();
-	data.push(b'\n');
-	stream.write_all(&data).unwrap();
+	let paths = daemon_paths();
+	let mut client = match muzan::ensure_daemon_with_args::<Request, Response>(
+		&paths,
+		&["daemon", "run"],
+	) {
+		Ok(c) => c,
+		Err(e) => {
+			eprintln!("error: {}", e);
+			std::process::exit(1);
+		}
+	};
 
-	let mut reader = BufReader::new(&stream);
-	let mut line = String::new();
-	reader.read_line(&mut line).unwrap();
-
-	serde_json::from_str(&line).unwrap_or(Response::Error {
-		message: "failed to parse daemon response".to_string(),
-	})
+	match client.send(request) {
+		Ok(resp) => resp,
+		Err(e) => {
+			eprintln!("error: {}", e);
+			std::process::exit(1);
+		}
+	}
 }
 
 // --- Commands that talk to daemon ---
@@ -783,29 +755,25 @@ fn cmd_show(args: &[String]) {
 
 fn cmd_daemon(args: &[String]) {
 	let subcmd = args.first().map(|s| s.as_str()).unwrap_or("status");
+	let paths = daemon_paths();
 
 	match subcmd {
 		"run" => {
-			// Run the daemon in-process (this is the actual daemon entry point)
 			let daemon_args: Vec<String> = args[1..].to_vec();
 			tokio::runtime::Runtime::new()
 				.unwrap()
 				.block_on(daemon::run(&daemon_args));
 		}
 		"start" => {
-			if connect_daemon().is_some() {
+			if muzan::client::is_running(&paths) {
 				eprintln!("daemon already running");
 				return;
 			}
-			let extra_args: Vec<String> = args[1..].iter().cloned().collect();
-			let daemon_bin = find_daemon_binary();
-			let mut cmd = Command::new(&daemon_bin);
-			let mut spawn_args = vec!["daemon".to_string(), "run".to_string()];
-			spawn_args.extend(extra_args);
-			cmd.args(&spawn_args)
-				.stdout(std::process::Stdio::null())
-				.stderr(std::process::Stdio::null());
-			match cmd.spawn() {
+			let mut spawn_args: Vec<String> = vec!["daemon".to_string(), "run".to_string()];
+			spawn_args.extend(args[1..].iter().cloned());
+			let spawn_refs: Vec<&str> = spawn_args.iter().map(|s| s.as_str()).collect();
+			let daemon = muzan::Daemon::new("ubermind");
+			match daemon.start_background_with_args(&spawn_refs) {
 				Ok(_) => eprintln!("daemon started"),
 				Err(e) => {
 					eprintln!("error: {}", e);
@@ -823,9 +791,12 @@ fn cmd_daemon(args: &[String]) {
 			}
 		}
 		"status" => {
-			if connect_daemon().is_some() {
-				let pid = std::fs::read_to_string(protocol::pid_path()).unwrap_or_default();
-				eprintln!("daemon running (pid {})", pid.trim());
+			if muzan::client::is_running(&paths) {
+				if let Some(pid) = muzan::client::read_pid(&paths) {
+					eprintln!("daemon running (pid {})", pid);
+				} else {
+					eprintln!("daemon running");
+				}
 			} else {
 				eprintln!("daemon not running");
 			}

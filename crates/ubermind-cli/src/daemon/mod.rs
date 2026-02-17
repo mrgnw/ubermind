@@ -3,10 +3,8 @@ pub mod output;
 pub mod supervisor;
 
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixListener;
 use crate::config;
-use crate::protocol::{self, Request, Response};
+use crate::protocol::{Request, Response};
 
 pub async fn run(args: &[String]) {
 	tracing_subscriber::fmt().init();
@@ -19,13 +17,15 @@ pub async fn run(args: &[String]) {
 	let http_port = if enable_http { Some(port) } else { None };
 	let supervisor = supervisor::Supervisor::new(global_config.clone(), http_port);
 
-	let state_dir = protocol::state_dir();
+	let paths = muzan::DaemonPaths::new("ubermind");
+
+	let state_dir = paths.state_dir();
 	let _ = std::fs::create_dir_all(&state_dir);
 
-	let pid_path = protocol::pid_path();
+	let pid_path = paths.pid_path();
 	let _ = std::fs::write(&pid_path, std::process::id().to_string());
 
-	let socket_path = protocol::socket_path();
+	let socket_path = paths.socket_path();
 	if socket_path.exists() {
 		let _ = std::fs::remove_file(&socket_path);
 	}
@@ -43,8 +43,17 @@ pub async fn run(args: &[String]) {
 	}
 
 	let sup_socket = Arc::clone(&supervisor);
+	let paths_socket = paths.clone();
 	let socket_handle = tokio::spawn(async move {
-		run_socket_server(sup_socket, &socket_path).await;
+		muzan::server::run_socket_server_with_error(
+			&paths_socket,
+			move |req: Request| {
+				let sup = Arc::clone(&sup_socket);
+				async move { handle_request(&sup, req).await }
+			},
+			Some(|msg: String| Response::Error { message: msg }),
+		)
+		.await;
 	});
 
 	let http_handle = if enable_http {
@@ -72,54 +81,8 @@ pub async fn run(args: &[String]) {
 		}
 	}
 
-	let _ = std::fs::remove_file(protocol::socket_path());
-	let _ = std::fs::remove_file(protocol::pid_path());
-}
-
-async fn run_socket_server(supervisor: Arc<supervisor::Supervisor>, socket_path: &std::path::Path) {
-	let listener = match UnixListener::bind(socket_path) {
-		Ok(l) => l,
-		Err(e) => {
-			tracing::error!("failed to bind socket: {}", e);
-			return;
-		}
-	};
-
-	tracing::info!("listening on {}", socket_path.display());
-
-	loop {
-		let (stream, _) = match listener.accept().await {
-			Ok(s) => s,
-			Err(e) => {
-				tracing::error!("accept error: {}", e);
-				continue;
-			}
-		};
-
-		let sup = Arc::clone(&supervisor);
-		tokio::spawn(async move {
-			let (reader, mut writer) = stream.into_split();
-			let mut lines = BufReader::new(reader).lines();
-
-			while let Ok(Some(line)) = lines.next_line().await {
-				let request: Request = match serde_json::from_str(&line) {
-					Ok(r) => r,
-					Err(e) => {
-						let resp = Response::Error {
-							message: format!("invalid request: {}", e),
-						};
-						let _ = write_response(&mut writer, &resp).await;
-						continue;
-					}
-				};
-
-				let response = handle_request(&sup, request).await;
-				if write_response(&mut writer, &response).await.is_err() {
-					break;
-				}
-			}
-		});
-	}
+	let _ = std::fs::remove_file(paths.socket_path());
+	let _ = std::fs::remove_file(paths.pid_path());
 }
 
 async fn handle_request(supervisor: &Arc<supervisor::Supervisor>, request: Request) -> Response {
@@ -198,15 +161,6 @@ async fn handle_request(supervisor: &Arc<supervisor::Supervisor>, request: Reque
 			}
 		}
 	}
-}
-
-async fn write_response(
-	writer: &mut tokio::net::unix::OwnedWriteHalf,
-	response: &Response,
-) -> Result<(), std::io::Error> {
-	let mut data = serde_json::to_vec(response).unwrap();
-	data.push(b'\n');
-	writer.write_all(&data).await
 }
 
 async fn run_http_server(supervisor: Arc<supervisor::Supervisor>, port: u16) {

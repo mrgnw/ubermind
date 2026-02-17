@@ -44,14 +44,6 @@ fn daemon_paths() -> DaemonPaths {
 	DaemonPaths::new("ubermind")
 }
 
-pub fn socket_path() -> std::path::PathBuf {
-	daemon_paths().socket_path()
-}
-
-pub fn pid_path() -> std::path::PathBuf {
-	daemon_paths().pid_path()
-}
-
 pub fn state_dir() -> std::path::PathBuf {
 	daemon_paths().state_dir()
 }
