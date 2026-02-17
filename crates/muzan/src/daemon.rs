@@ -6,6 +6,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::paths::DaemonPaths;
 use crate::server;
 
+/// Core daemon struct. Create one with your app name and use it to
+/// run, start, or stop the daemon.
 pub struct Daemon {
 	pub paths: DaemonPaths,
 }
@@ -17,6 +19,10 @@ impl Daemon {
 		}
 	}
 
+	/// Run the daemon in the foreground.
+	///
+	/// Sets up PID file, binds the Unix socket, dispatches requests to `handler`,
+	/// and blocks until Ctrl+C.
 	pub async fn run<Req, Resp, F, Fut>(&self, handler: F)
 	where
 		Req: DeserializeOwned + Send + 'static,
@@ -52,11 +58,15 @@ impl Daemon {
 		self.cleanup();
 	}
 
+	/// Remove socket and PID files.
 	pub fn cleanup(&self) {
 		let _ = std::fs::remove_file(self.paths.socket_path());
 		let _ = std::fs::remove_file(self.paths.pid_path());
 	}
 
+	/// Spawn the current binary as a background daemon process.
+	///
+	/// Invokes `<current_exe> daemon run` with stdout/stderr suppressed.
 	pub fn start_background(&self) -> Result<(), String> {
 		if crate::client::is_running(&self.paths) {
 			return Err("daemon already running".to_string());
@@ -72,6 +82,7 @@ impl Daemon {
 		Ok(())
 	}
 
+	/// Spawn the current binary with custom args as a background daemon.
 	pub fn start_background_with_args(&self, args: &[&str]) -> Result<(), String> {
 		if crate::client::is_running(&self.paths) {
 			return Err("daemon already running".to_string());
@@ -87,6 +98,7 @@ impl Daemon {
 		Ok(())
 	}
 
+	/// Stop the daemon by sending SIGTERM to the PID in the PID file.
 	pub fn stop(&self) -> Result<(), String> {
 		if let Some(pid) = crate::client::read_pid(&self.paths) {
 			use nix::sys::signal::{kill, Signal};
@@ -100,12 +112,15 @@ impl Daemon {
 	}
 }
 
+/// Connect to a running daemon, or auto-start it with `<exe> daemon run`.
+///
+/// Waits up to 5 seconds for the daemon to become available.
 pub fn ensure_daemon<Req, Resp>(
 	paths: &DaemonPaths,
 ) -> Result<crate::client::DaemonClient<Req, Resp>, crate::client::ClientError>
 where
 	Req: Serialize,
-	Resp: serde::de::DeserializeOwned,
+	Resp: DeserializeOwned,
 {
 	if let Ok(client) = crate::client::DaemonClient::connect(paths) {
 		return Ok(client);
@@ -130,13 +145,16 @@ where
 	Err(crate::client::ClientError::NotRunning)
 }
 
+/// Connect to a running daemon, or auto-start it with custom args.
+///
+/// Waits up to 5 seconds for the daemon to become available.
 pub fn ensure_daemon_with_args<Req, Resp>(
 	paths: &DaemonPaths,
 	args: &[&str],
 ) -> Result<crate::client::DaemonClient<Req, Resp>, crate::client::ClientError>
 where
 	Req: Serialize,
-	Resp: serde::de::DeserializeOwned,
+	Resp: DeserializeOwned,
 {
 	if let Ok(client) = crate::client::DaemonClient::connect(paths) {
 		return Ok(client);

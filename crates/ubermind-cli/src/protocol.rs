@@ -1,8 +1,6 @@
 use crate::types::ServiceStatus;
 use serde::{Deserialize, Serialize};
 
-pub use muzan::DaemonPaths;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
@@ -40,8 +38,8 @@ pub enum Response {
 	Pong,
 }
 
-fn daemon_paths() -> DaemonPaths {
-	DaemonPaths::new("ubermind")
+fn daemon_paths() -> muzan::DaemonPaths {
+	muzan::DaemonPaths::new("ubermind")
 }
 
 pub fn state_dir() -> std::path::PathBuf {

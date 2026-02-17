@@ -6,6 +6,11 @@ use tokio::net::UnixListener;
 
 use crate::paths::DaemonPaths;
 
+/// Run a Unix socket server that deserializes requests, passes them to `handler`,
+/// and writes back serialized responses. Newline-delimited JSON protocol.
+///
+/// Parse errors are silently dropped. Use [`run_socket_server_with_error`] to send
+/// error responses for malformed requests.
 pub async fn run_socket_server<Req, Resp, F, Fut>(
 	paths: &DaemonPaths,
 	handler: F,
@@ -18,6 +23,10 @@ pub async fn run_socket_server<Req, Resp, F, Fut>(
 	run_socket_server_with_error(paths, handler, None::<fn(String) -> Resp>).await;
 }
 
+/// Like [`run_socket_server`], but with an optional callback for parse errors.
+///
+/// When a request can't be deserialized, `on_parse_error` is called with the error
+/// message and its return value is sent back to the client.
 pub async fn run_socket_server_with_error<Req, Resp, F, Fut, E>(
 	paths: &DaemonPaths,
 	handler: F,
