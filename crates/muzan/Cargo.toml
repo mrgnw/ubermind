@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Daemon lifecycle toolkit for Rust CLIs — Unix socket IPC, auto-start, PID management"
+readme = "README.md"
 keywords = ["daemon", "ipc", "unix-socket", "process-manager", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 
