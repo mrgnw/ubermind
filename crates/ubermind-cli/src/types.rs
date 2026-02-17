@@ -2,6 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ServiceType {
+	#[default]
+	Service,
+	Task,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Service {
 	pub name: String,
@@ -13,6 +21,8 @@ pub struct Service {
 pub struct ProcessDef {
 	pub name: String,
 	pub command: String,
+	#[serde(default)]
+	pub service_type: ServiceType,
 	#[serde(default = "default_true")]
 	pub restart: bool,
 	#[serde(default = "default_max_retries")]
@@ -69,6 +79,8 @@ pub struct ProcessStatus {
 	pub pid: Option<u32>,
 	#[serde(default = "default_true")]
 	pub autostart: bool,
+	#[serde(default)]
+	pub service_type: ServiceType,
 	#[serde(default)]
 	pub ports: Vec<u16>,
 }

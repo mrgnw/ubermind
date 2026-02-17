@@ -1,6 +1,4 @@
 use crate::daemon::output::OutputCapture;
-use libproc::processes::{pids_by_type, ProcFilter};
-use netstat2::*;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -72,13 +70,14 @@ impl Supervisor {
 							.and_then(|p| pid_ports.get(&p))
 							.cloned()
 							.unwrap_or_default();
-						ProcessStatus {
-							name: pname.clone(),
-							state: mp.state.clone(),
-							pid,
-							autostart: mp.def.autostart,
-							ports,
-						}
+					ProcessStatus {
+						name: pname.clone(),
+						state: mp.state.clone(),
+						pid,
+						autostart: mp.def.autostart,
+						service_type: mp.def.service_type.clone(),
+						ports,
+					}
 					})
 					.collect();
 				result.push(ServiceStatus {
@@ -87,18 +86,19 @@ impl Supervisor {
 					processes,
 				});
 			} else {
-				let service = config::load_service(entry, &self.config.defaults);
-				let processes = service
-					.processes
-					.iter()
-					.map(|p| ProcessStatus {
-						name: p.name.clone(),
-						state: ProcessState::Stopped,
-						pid: None,
-						autostart: p.autostart,
-						ports: vec![],
-					})
-					.collect();
+			let service = config::load_service(entry, &self.config.defaults);
+			let processes = service
+				.processes
+				.iter()
+				.map(|p| ProcessStatus {
+					name: p.name.clone(),
+					state: ProcessState::Stopped,
+					pid: None,
+					autostart: p.autostart,
+					service_type: p.service_type.clone(),
+					ports: vec![],
+				})
+				.collect();
 				result.push(ServiceStatus {
 					name: name.clone(),
 					dir: entry.dir.clone(),
@@ -129,7 +129,7 @@ impl Supervisor {
 
 		let service = config::load_service(entry, &self.config.defaults);
 		if service.processes.is_empty() {
-			return Err(format!("{}: no processes defined (missing Procfile?)", name));
+			return Err(format!("{}: no processes defined (missing services.toml?)", name));
 		}
 
 		let mut managed_processes = HashMap::new();
@@ -394,6 +394,15 @@ async fn run_process_loop(
 			}
 			Ok(exit) => {
 				let code = exit.code().unwrap_or(-1);
+
+				// Tasks don't restart — a non-zero exit is an immediate failure
+				if def.service_type == ServiceType::Task {
+					let msg = format!("[ubermind] {}/{} failed (exit {})\n", service, process, code);
+					output.write(msg.as_bytes()).await;
+					update_state(&supervisor, &service, &process, ProcessState::Failed { exit_code: code }).await;
+					return;
+				}
+
 				retry_count += 1;
 
 				if def.restart && retry_count <= def.max_retries {
@@ -472,7 +481,11 @@ async fn update_state(supervisor: &Arc<Supervisor>, service: &str, process: &str
 	}
 }
 
+#[cfg(target_os = "macos")]
 fn listening_ports_for_pids(target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
+	use libproc::processes::{pids_by_type, ProcFilter};
+	use netstat2::*;
+
 	let af = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
 	let proto = ProtocolFlags::TCP;
 	let sockets = match get_sockets_info(af, proto) {
@@ -518,6 +531,11 @@ fn listening_ports_for_pids(target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
 		}
 	}
 	result
+}
+
+#[cfg(not(target_os = "macos"))]
+fn listening_ports_for_pids(_target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
+	HashMap::new()
 }
 
 fn kill_process_tree(pid: u32) {

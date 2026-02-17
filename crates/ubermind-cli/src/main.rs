@@ -16,6 +16,7 @@ use config::ServiceEntry;
 use protocol::{Request, Response};
 use types::*;
 use owo_colors::OwoColorize;
+use toml;
 
 fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();
@@ -119,7 +120,7 @@ fn print_usage() {
 	eprintln!();
 
 	eprintln!("{}", "config".cyan().bold());
-	eprintln!("  {} [name] [process]        Show Procfile or process command", "show".bold());
+	eprintln!("  {} [name] [process]        Show services.toml or process command", "show".bold());
 	eprintln!("  {} [name] [dir]             Register a project", "add".bold());
 	eprintln!("  {}                         Create config files", "init".bold());
 	eprintln!();
@@ -151,20 +152,13 @@ fn cmd_init() {
 	let config_dir = protocol::config_dir();
 	let _ = std::fs::create_dir_all(&config_dir);
 
-	let projects_file = config_dir.join("projects");
+	let projects_file = config_dir.join("projects.toml");
 	if !projects_file.exists() {
-		let content = "# name: /path/to/project\n# myapp: ~/dev/myapp\n";
+		let content = "# myapp = \"~/dev/myapp\"\n#\n# [tunnel]\n# run = \"ssh -N -L 5432:localhost:5432 myserver\"\n";
 		let _ = std::fs::write(&projects_file, content);
 		eprintln!("created {}", projects_file.display());
 	} else {
 		eprintln!("already exists: {}", projects_file.display());
-	}
-
-	let commands_file = config_dir.join("commands");
-	if !commands_file.exists() {
-		let content = "# name: shell command\n# tunnel: ssh -N -L 5432:localhost:5432 myserver\n";
-		let _ = std::fs::write(&commands_file, content);
-		eprintln!("created {}", commands_file.display());
 	}
 
 	eprintln!();
@@ -177,7 +171,7 @@ fn cmd_init() {
 fn cmd_add(args: &[String]) {
 	let config_dir = protocol::config_dir();
 	let _ = std::fs::create_dir_all(&config_dir);
-	let projects_file = config_dir.join("projects");
+	let projects_file = config_dir.join("projects.toml");
 
 	let (name, dir) = if args.len() >= 2 {
 		(args[0].clone(), PathBuf::from(&args[1]))
@@ -204,14 +198,11 @@ fn cmd_add(args: &[String]) {
 		std::process::exit(1);
 	}
 
+	// Check for duplicate in existing projects.toml
 	if let Ok(content) = std::fs::read_to_string(&projects_file) {
-		for line in content.lines() {
-			let line = line.trim();
-			if line.is_empty() || line.starts_with('#') {
-				continue;
-			}
-			if let Some(pos) = line.find(':') {
-				if line[..pos].trim() == name {
+		if let Ok(table) = toml::from_str::<toml::Value>(&content) {
+			if let Some(map) = table.as_table() {
+				if map.contains_key(&name) {
 					eprintln!("{}: already registered", name);
 					return;
 				}
@@ -219,11 +210,11 @@ fn cmd_add(args: &[String]) {
 		}
 	}
 
-	let procfile = dir.join("Procfile");
-	if !procfile.exists() {
-		eprintln!("note: no Procfile found in {}", dir.display());
-		eprintln!("create one with process definitions, e.g.:");
-		eprintln!("  web: npm run dev");
+	let services_toml = dir.join("services.toml");
+	if !services_toml.exists() {
+		eprintln!("note: no services.toml found in {}", dir.display());
+		eprintln!("create one with service definitions, e.g.:");
+		eprintln!("  web = \"npm run dev\"");
 	}
 
 	let mut file = std::fs::OpenOptions::new()
@@ -231,7 +222,7 @@ fn cmd_add(args: &[String]) {
 		.append(true)
 		.open(&projects_file)
 		.unwrap();
-	writeln!(file, "{}: {}", name, dir.display()).unwrap();
+	writeln!(file, "{} = {:?}", name, dir.display().to_string()).unwrap();
 	eprintln!("{}: added ({})", name, dir.display());
 }
 
@@ -730,9 +721,12 @@ fn cmd_show(args: &[String]) {
 		if let Some(current) = get_current_project(&entries) {
 			(current, None)
 		} else {
-			eprintln!("usage: ub show [service] [process]");
-			eprintln!("or run from a registered project directory");
-			std::process::exit(1);
+			let projects_path = protocol::config_dir().join("projects");
+			eprintln!("{}", projects_path.display().to_string().dimmed());
+			for (name, entry) in &entries {
+				eprintln!("{}: {}", name.bold(), entry.dir.display());
+			}
+			std::process::exit(0);
 		}
 	} else if filtered_args.len() == 1 {
 		if entries.contains_key(&filtered_args[0]) {
@@ -756,64 +750,33 @@ fn cmd_show(args: &[String]) {
 		}
 	};
 
-	let procfile_path = service_entry.dir.join("Procfile");
+	let global_config = config::load_global_config();
+	let service = config::load_service(service_entry, &global_config.defaults);
 
-	if !procfile_path.exists() {
-		eprintln!("Procfile not found: {}", procfile_path.display());
+	if service.processes.is_empty() {
+		let services_path = service_entry.dir.join("services.toml");
+		eprintln!("no services defined ({})", services_path.display());
 		std::process::exit(1);
 	}
 
-	let content = match std::fs::read_to_string(&procfile_path) {
-		Ok(c) => c,
-		Err(e) => {
-			eprintln!("failed to read Procfile: {}", e);
-			std::process::exit(1);
-		}
-	};
-
 	if let Some(proc_name) = process_name {
-		let mut found = false;
-		for line in content.lines() {
-			let line = line.trim();
-			if line.is_empty() || line.starts_with('#') {
-				continue;
-			}
-			if let Some((name, cmd)) = line.split_once(':') {
-				if name.trim() == proc_name {
-					println!("{}", cmd.trim());
-					found = true;
-					break;
-				}
-			}
-		}
-		if !found {
-			eprintln!("process '{}' not found in {}", proc_name, procfile_path.display());
+		if let Some(proc) = service.processes.iter().find(|p| p.name == proc_name) {
+			println!("{}", proc.command);
+		} else {
+			eprintln!("process '{}' not found in {}", proc_name, service_name);
 			std::process::exit(1);
 		}
 	} else {
-		println!("{}", procfile_path.display().dimmed());
+		let services_path = service_entry.dir.join("services.toml");
+		println!("{}", services_path.display().to_string().dimmed());
 		println!();
-		for line in content.lines() {
-			let line_trimmed = line.trim();
-			if line_trimmed.is_empty() {
-				println!();
-			} else if line_trimmed.starts_with('#') {
-				let after_hash = line_trimmed[1..].trim_start();
-				if let Some(rest) = after_hash.strip_prefix('~') {
-					let rest = rest.trim();
-					if let Some((name, cmd)) = rest.split_once(':') {
-						println!("{} {}:{}", "~".dimmed(), name.cyan().dimmed(), cmd.dimmed());
-					} else {
-						println!("{}", line.dimmed());
-					}
-				} else {
-					println!("{}", line.dimmed());
-				}
-			} else if let Some((name, cmd)) = line.split_once(':') {
-				println!("{}:{}", name.cyan(), cmd);
-			} else {
-				println!("{}", line);
-			}
+		for proc in &service.processes {
+			let type_tag = match proc.service_type {
+				ServiceType::Task => " (task)".dimmed().to_string(),
+				ServiceType::Service => String::new(),
+			};
+			let optional = if !proc.autostart { " (optional)".dimmed().to_string() } else { String::new() };
+			println!("{}{}{} {}", proc.name.cyan(), type_tag, optional, proc.command.dimmed());
 		}
 	}
 }
@@ -1030,8 +993,8 @@ fn render_status(args: &[String]) -> usize {
 		let running = status.map(|s| s.is_running()).unwrap_or(false);
 
 		let detail = if let Some(entry) = entry {
-			if let Some(ref cmd) = entry.command {
-				cmd.clone()
+			if let Some(ref cmd) = entry.inline_command {
+				cmd.run.clone()
 			} else {
 				entry.dir.to_string_lossy().to_string()
 			}

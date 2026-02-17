@@ -1,5 +1,5 @@
 use crate::daemon::supervisor::Supervisor;
-use crate::types::ProcessState;
+use crate::types::{ProcessState, ServiceType};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode, Uri};
@@ -66,6 +66,8 @@ struct ProcessInfo {
 	pid: Option<u32>,
 	status: String,
 	autostart: bool,
+	#[serde(rename = "type")]
+	service_type: String,
 	ports: Vec<u16>,
 }
 
@@ -131,6 +133,10 @@ async fn service_detail(
 				pid: p.pid,
 				status: status_str,
 				autostart: p.autostart,
+				service_type: match p.service_type {
+					ServiceType::Task => "task".to_string(),
+					ServiceType::Service => "service".to_string(),
+				},
 				ports: p.ports,
 			}
 		})
