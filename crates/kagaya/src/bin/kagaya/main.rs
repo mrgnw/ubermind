@@ -2,6 +2,7 @@ mod config;
 mod daemon;
 mod launchd;
 mod logs;
+mod migrate;
 mod protocol;
 mod self_update;
 
@@ -50,6 +51,10 @@ fn main() {
 		"show" => cmd_show(&args[1..]),
 		"daemon" => cmd_daemon(&args[1..]),
 		"serve" => cmd_serve(&args[1..]),
+		"migrate" => {
+			let force = args[1..].iter().any(|a| a == "--force" || a == "-f");
+			migrate::cmd_migrate(force);
+		}
 		"launchd" | "launch" => launchd::cmd_launchd(&args[1..]),
 		"self" => {
 			match args.get(1).map(|s| s.as_str()) {
@@ -104,7 +109,7 @@ fn main() {
 fn print_usage() {
 	eprintln!("{} {} — process daemon manager", "kagaya".bold(), env!("CARGO_PKG_VERSION"));
 	eprintln!();
-	eprintln!("usage: {} [command] [service] [options]", "ub".bold());
+	eprintln!("usage: {} [command] [service] [options]", "ky".bold());
 	eprintln!();
 
 	eprintln!("{}", "services".cyan().bold());
@@ -125,6 +130,7 @@ fn print_usage() {
 	eprintln!("  {} [name] [process]        Show services.toml or process command", "show".bold());
 	eprintln!("  {} [name] [dir]             Register a project", "add".bold());
 	eprintln!("  {}                         Create config files", "init".bold());
+	eprintln!("  {} [--force]             Migrate ubermind Procfiles to kagaya TOML", "migrate".bold());
 	eprintln!();
 
 	eprintln!("{}", "system".cyan().bold());
@@ -268,29 +274,33 @@ fn cmd_status(args: &[String]) {
 }
 
 fn print_process_line(proc: &ProcessStatus, name_width: usize) {
-	let (circle, uptime, pid, label) = match &proc.state {
+	let (symbol, label, extra) = match &proc.state {
 		ProcessState::Running { pid, uptime_secs } => {
-			("●".green().to_string(), format_uptime(*uptime_secs), format!("{}", pid), "on".green().to_string())
+			let ports = if proc.ports.is_empty() {
+				String::new()
+			} else {
+				proc.ports.iter().map(|p| format!(":{}", p)).collect::<Vec<_>>().join(",")
+			};
+			let extra = format!("{:<8} {:<8} {}", format_uptime(*uptime_secs), pid, ports);
+			("●".green().to_string(), "on".green().to_string(), extra)
 		}
 		ProcessState::Stopped if !proc.autostart => {
-			("○".dimmed().to_string(), "-".to_string(), "-".to_string(), "optional".dimmed().to_string())
+			("○".dimmed().to_string(), "optional".dimmed().to_string(), String::new())
 		}
 		ProcessState::Stopped => {
-			("●".red().to_string(), "-".to_string(), "-".to_string(), "off".red().to_string())
+			("◻".dimmed().to_string(), "off".dimmed().to_string(), String::new())
 		}
 		ProcessState::Crashed { exit_code, retries } => {
-			("●".yellow().to_string(), format!("exit {}", exit_code), format!("retry {}", retries), "crashed".yellow().to_string())
+			let extra = format!("exit {}  retry {}", exit_code, retries);
+			("⚠".yellow().to_string(), "crashed".yellow().to_string(), extra)
 		}
 		ProcessState::Failed { exit_code } => {
-			("●".red().to_string(), format!("exit {}", exit_code), "-".to_string(), "failed".red().to_string())
+			let extra = format!("exit {}", exit_code);
+			("✖".red().to_string(), "failed".red().to_string(), extra)
 		}
 	};
-	let ports = if proc.ports.is_empty() {
-		String::new()
-	} else {
-		format!(" {}", proc.ports.iter().map(|p| format!(":{}", p)).collect::<Vec<_>>().join(","))
-	};
-	println!("{} {:<width$} {:<8} {:<8} {}{}", circle, proc.name, uptime, pid, label, ports, width = name_width);
+	let extra_str = if extra.is_empty() { String::new() } else { format!("  {}", extra.trim_end()) };
+	println!("  {} {:<width$} {}{}", symbol, proc.name, label, extra_str, width = name_width);
 }
 
 fn cmd_start(args: &[String]) {
@@ -301,7 +311,9 @@ fn cmd_start(args: &[String]) {
 	let rest: Vec<String> = rest.into_iter().filter(|a| !is_all_flag(a)).collect();
 
 	let mut target_processes: Vec<String> = Vec::new();
-	let resolved: Vec<String> = if rest.is_empty() {
+	let resolved: Vec<String> = if start_all && rest.is_empty() {
+		entries.keys().cloned().collect()
+	} else if rest.is_empty() {
 		resolve_target_names(&[], &entries)
 	} else {
 		let mut service_names = Vec::new();
@@ -948,7 +960,6 @@ fn render_status(args: &[String]) -> usize {
 		return 0;
 	}
 
-	let max_name_width = sorted_filter.iter().map(|n| n.len()).max().unwrap_or(0);
 	let max_proc_name_width = sorted_filter
 		.iter()
 		.filter_map(|name| status_map.get(name))
@@ -958,27 +969,15 @@ fn render_status(args: &[String]) -> usize {
 
 	let mut lines = 0usize;
 	for name in &sorted_filter {
-		let entry = entries.get(name);
 		let status = status_map.get(name);
 		let running = status.map(|s| s.is_running()).unwrap_or(false);
 
-		let detail = if let Some(entry) = entry {
-			if let Some(ref cmd) = entry.inline_command {
-				cmd.run.clone()
-			} else {
-				entry.dir.to_string_lossy().to_string()
-			}
-		} else {
-			String::new()
-		};
-
-		let circle = if running { "●".green().to_string() } else { "●".red().to_string() };
-		println!(" {} {:<width$} {}", circle, name, detail, width = max_name_width);
+		let symbol = if running { "●".green().to_string() } else { "◻".dimmed().to_string() };
+		println!("{} {}", symbol, name.bold());
 		lines += 1;
 
 		if let Some(status) = status {
 			for proc in &status.processes {
-				print!("   └ ");
 				print_process_line(proc, max_proc_name_width);
 				lines += 1;
 			}
@@ -989,9 +988,9 @@ fn render_status(args: &[String]) -> usize {
 		println!();
 		lines += 1;
 		if let Some(port) = http_port {
-			println!(" {} {:<width$} http://127.0.0.1:{}", "●".green(), "serve", port, width = max_name_width);
+			println!("{} {}  http://127.0.0.1:{}", "●".green(), "serve".bold(), port);
 		} else {
-			println!(" {} {:<width$} not running", "○".dimmed(), "serve", width = max_name_width);
+			println!("{} {}  not running", "○".dimmed(), "serve".bold());
 		}
 		lines += 1;
 	}
