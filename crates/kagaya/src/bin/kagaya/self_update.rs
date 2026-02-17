@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const REPO: &str = "mrgnw/ubermind"; // TODO: update when repo is renamed
+const REPO: &str = "mrgnw/kagaya";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn cmd_self_update() {
