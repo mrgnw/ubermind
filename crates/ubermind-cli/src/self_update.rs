@@ -56,7 +56,7 @@ pub fn cmd_self_update() {
 		std::process::exit(1);
 	}
 
-	for bin_name in &["ubermind", "ubermind-daemon"] {
+	for bin_name in &["ubermind"] {
 		let src = tmpdir.join(bin_name);
 		let dest = install_dir.join(bin_name);
 		if src.exists() {

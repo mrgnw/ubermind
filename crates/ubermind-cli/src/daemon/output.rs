@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
-use ubermind_core::logs;
+use crate::logs;
 
 const RING_BUFFER_SIZE: usize = 64 * 1024;
 
@@ -189,7 +189,6 @@ fn expire_service_logs(dir: &std::path::Path, max_age_days: u32, max_files: u32)
 
 fn date_to_epoch(year: u32, month: u32, day: u32) -> u64 {
 	let full_year = if year < 100 { 2000 + year } else { year };
-	// Simplified days-since-epoch calculation
 	let y = full_year as i64;
 	let m = month as i64;
 	let d = day as i64;

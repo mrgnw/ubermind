@@ -17,14 +17,13 @@ bump part="patch":
 	esac
 	next="${major}.${minor}.${patch}"
 	sed -i '' "s/^version = \"${current}\"/version = \"${next}\"/" Cargo.toml
-	sed -i '' "s/ubermind-core = { path = \"crates\/ubermind-core\", version = \"${current}\"/ubermind-core = { path = \"crates\/ubermind-core\", version = \"${next}\"/" Cargo.toml
 	echo "${current} -> ${next}"
 
-# Build all workspace crates (debug)
+# Build (debug)
 build:
 	cargo build --workspace
 
-# Build all workspace crates (release)
+# Build (release)
 build-release:
 	cargo build --workspace --release
 
@@ -32,7 +31,7 @@ build-release:
 build-ui:
 	cd ui && pnpm install && pnpm build
 
-# Build everything: UI + all crates (release)
+# Build everything: UI + release
 build-all: build-ui build-release
 
 # Cross-compile release archives for all targets
@@ -58,7 +57,7 @@ dist: build-ui
 			*-linux-*)  cargo zigbuild --release --target "${target}" ;;
 		esac
 		archive="${bin}-{{tag}}-${target}.tar.gz"
-		tar -czf "${dist}/${archive}" -C "target/${target}/release" "${bin}" "ubermind-daemon"
+		tar -czf "${dist}/${archive}" -C "target/${target}/release" "${bin}"
 		echo "  -> ${dist}/${archive}"
 		echo
 	done
@@ -86,13 +85,10 @@ release: dist
 	echo
 	echo "don't forget: just publish"
 
-# Publish all crates to crates.io (in dependency order)
+# Publish to crates.io
 publish:
-	cargo publish -p ubermind-core
 	cargo publish -p ubermind
-	cargo publish -p ubermind-daemon
 
-# Install locally (debug build)
+# Install locally
 install:
 	cargo install --path crates/ubermind-cli
-	cargo install --path crates/ubermind-daemon

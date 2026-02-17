@@ -27,20 +27,17 @@ pub fn rotated_log_name(process: &str) -> String {
 }
 
 pub fn parse_log_date(filename: &str) -> Option<(u32, u32, u32)> {
-	// Extract "YY-MMDD" from filename like "web 26-0214.log"
 	let parts: Vec<&str> = filename.splitn(2, ' ').collect();
 	if parts.len() < 2 {
 		return None;
 	}
 	let rest = parts[1];
-	// Extract date portion - everything before first space or .log
 	let date_str = rest
 		.split(' ')
 		.next()
 		.unwrap_or(rest)
 		.trim_end_matches(".log");
 
-	// Parse "YY-MMDD"
 	let parts: Vec<&str> = date_str.splitn(2, '-').collect();
 	if parts.len() != 2 {
 		return None;
@@ -56,7 +53,6 @@ pub fn parse_log_date(filename: &str) -> Option<(u32, u32, u32)> {
 }
 
 fn now_ymd() -> String {
-	// Format: "YY-MMDD"
 	use std::time::SystemTime;
 	let now = SystemTime::now()
 		.duration_since(SystemTime::UNIX_EPOCH)
@@ -81,13 +77,11 @@ fn now_ymdhm() -> (String, String, String) {
 }
 
 fn secs_to_datetime(secs: u64) -> (u32, u32, u32, u32, u32) {
-	// Simple UTC datetime from unix timestamp
 	let days = (secs / 86400) as i64;
 	let time_of_day = secs % 86400;
 	let hour = (time_of_day / 3600) as u32;
 	let minute = ((time_of_day % 3600) / 60) as u32;
 
-	// Days since epoch to date (civil_from_days algorithm)
 	let z = days + 719468;
 	let era = if z >= 0 { z } else { z - 146096 } / 146097;
 	let doe = (z - era * 146097) as u32;
@@ -116,7 +110,6 @@ mod tests {
 
 	#[test]
 	fn test_secs_to_datetime() {
-		// 2026-02-14 00:00:00 UTC = 1771027200
 		let (y, m, d, h, min) = secs_to_datetime(1771027200);
 		assert_eq!((y, m, d, h, min), (2026, 2, 14, 0, 0));
 	}

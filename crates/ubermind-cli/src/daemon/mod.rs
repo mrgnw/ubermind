@@ -1,18 +1,16 @@
-mod api;
-mod output;
-mod supervisor;
+pub mod api;
+pub mod output;
+pub mod supervisor;
 
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
-use ubermind_core::config;
-use ubermind_core::protocol::{self, Request, Response};
+use crate::config;
+use crate::protocol::{self, Request, Response};
 
-#[tokio::main]
-async fn main() {
+pub async fn run(args: &[String]) {
 	tracing_subscriber::fmt().init();
 
-	let args: Vec<String> = std::env::args().skip(1).collect();
 	let _foreground = args.iter().any(|a| a == "--foreground" || a == "-f");
 	let enable_http = args.iter().any(|a| a == "--http");
 
@@ -21,24 +19,19 @@ async fn main() {
 	let http_port = if enable_http { Some(port) } else { None };
 	let supervisor = supervisor::Supervisor::new(global_config.clone(), http_port);
 
-	// Ensure state directory exists
 	let state_dir = protocol::state_dir();
 	let _ = std::fs::create_dir_all(&state_dir);
 
-	// Write PID file
 	let pid_path = protocol::pid_path();
 	let _ = std::fs::write(&pid_path, std::process::id().to_string());
 
-	// Clean up stale socket
 	let socket_path = protocol::socket_path();
 	if socket_path.exists() {
 		let _ = std::fs::remove_file(&socket_path);
 	}
 
-	// Run initial log expiry
 	output::expire_logs(global_config.logs.max_age_days, global_config.logs.max_files);
 
-	// Spawn log expiry task (hourly)
 	{
 		let config = global_config.clone();
 		tokio::spawn(async move {
@@ -49,13 +42,11 @@ async fn main() {
 		});
 	}
 
-	// Start Unix socket server
 	let sup_socket = Arc::clone(&supervisor);
 	let socket_handle = tokio::spawn(async move {
 		run_socket_server(sup_socket, &socket_path).await;
 	});
 
-	// Start HTTP server if requested
 	let http_handle = if enable_http {
 		let sup_http = Arc::clone(&supervisor);
 		Some(tokio::spawn(async move {
@@ -70,7 +61,6 @@ async fn main() {
 		tracing::info!("HTTP server on port {}", port);
 	}
 
-	// Wait for shutdown
 	tokio::select! {
 		_ = socket_handle => {},
 		_ = async {
@@ -82,7 +72,6 @@ async fn main() {
 		}
 	}
 
-	// Cleanup
 	let _ = std::fs::remove_file(protocol::socket_path());
 	let _ = std::fs::remove_file(protocol::pid_path());
 }

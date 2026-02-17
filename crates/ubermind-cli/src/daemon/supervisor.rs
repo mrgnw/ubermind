@@ -1,4 +1,4 @@
-use crate::output::OutputCapture;
+use crate::daemon::output::OutputCapture;
 use libproc::processes::{pids_by_type, ProcFilter};
 use netstat2::*;
 use std::collections::HashMap;
@@ -8,8 +8,8 @@ use std::time::Instant;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
-use ubermind_core::config::{self, GlobalConfig};
-use ubermind_core::types::*;
+use crate::config::{self, GlobalConfig};
+use crate::types::*;
 
 pub struct Supervisor {
 	pub services: Arc<RwLock<HashMap<String, ManagedService>>>,
@@ -280,7 +280,6 @@ impl Supervisor {
 			let mp = managed.processes.get(proc_name).ok_or_else(|| format!("{}/{}: not found", service, proc_name))?;
 			Ok(mp.output.clone())
 		} else {
-			// Return the first process's output (or we could merge them)
 			managed
 				.processes
 				.values()
@@ -354,7 +353,6 @@ async fn run_process_loop(
 			});
 		}
 
-		// Also spawn an uptime updater
 		let sup_clone = Arc::clone(&supervisor);
 		let svc = service.clone();
 		let proc_name = process.clone();
@@ -385,7 +383,6 @@ async fn run_process_loop(
 			}
 		};
 
-		// Process exited, stop the uptime updater
 		uptime_handle.abort();
 
 		match exit_result {
@@ -446,7 +443,6 @@ async fn spawn_process(def: &ProcessDef, dir: &std::path::Path) -> Result<Child,
 		.current_dir(dir)
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
-		// Create a new process group so we can kill the tree
 		.process_group(0);
 
 	for (key, val) in &def.env {
@@ -476,9 +472,6 @@ async fn update_state(supervisor: &Arc<Supervisor>, service: &str, process: &str
 	}
 }
 
-/// Get listening TCP ports for a set of managed process PIDs.
-/// First checks if the PID itself owns the port (fast path).
-/// Falls back to expanding the process group to find child listeners.
 fn listening_ports_for_pids(target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
 	let af = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
 	let proto = ProtocolFlags::TCP;
@@ -507,7 +500,6 @@ fn listening_ports_for_pids(target_pids: &[u32]) -> HashMap<u32, Vec<u16>> {
 			result.insert(pid, ports.clone());
 			continue;
 		}
-		// PID is likely `sh -c ...`; check its process group for child listeners
 		let group_pids = pids_by_type(ProcFilter::ByProgramGroup { pgrpid: pid })
 			.unwrap_or_default();
 		let mut ports: Vec<u16> = Vec::new();
@@ -533,7 +525,6 @@ fn kill_process_tree(pid: u32) {
 	use nix::unistd::Pid;
 	let pgid = Pid::from_raw(pid as i32);
 	let _ = killpg(pgid, Signal::SIGTERM);
-	// Give processes a moment, then force kill
 	std::thread::spawn(move || {
 		std::thread::sleep(std::time::Duration::from_secs(3));
 		let _ = killpg(pgid, Signal::SIGKILL);

@@ -1,4 +1,5 @@
-use crate::supervisor::Supervisor;
+use crate::daemon::supervisor::Supervisor;
+use crate::types::ProcessState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode, Uri};
@@ -114,14 +115,14 @@ async fn service_detail(
 		.into_iter()
 		.map(|p| {
 			let status_str = match &p.state {
-				ubermind_core::types::ProcessState::Running { pid, uptime_secs } => {
+				ProcessState::Running { pid, uptime_secs } => {
 					format!("running (pid {}, {}s)", pid, uptime_secs)
 				}
-				ubermind_core::types::ProcessState::Stopped => "stopped".to_string(),
-				ubermind_core::types::ProcessState::Crashed { exit_code, retries } => {
+				ProcessState::Stopped => "stopped".to_string(),
+				ProcessState::Crashed { exit_code, retries } => {
 					format!("crashed (exit {}, retry {})", exit_code, retries)
 				}
-				ubermind_core::types::ProcessState::Failed { exit_code } => {
+				ProcessState::Failed { exit_code } => {
 					format!("failed (exit {})", exit_code)
 				}
 			};
@@ -268,7 +269,6 @@ async fn handle_ws_echo(mut socket: WebSocket, state: AppState, name: String) {
 		}
 	};
 
-	// Send initial snapshots
 	for (proc_name, capture) in &outputs {
 		let snapshot = capture.snapshot().await;
 		if !snapshot.is_empty() {
@@ -279,14 +279,12 @@ async fn handle_ws_echo(mut socket: WebSocket, state: AppState, name: String) {
 		}
 	}
 
-	// Subscribe to all outputs and forward
 	let mut receivers: Vec<(String, tokio::sync::broadcast::Receiver<Vec<u8>>)> = outputs
 		.iter()
 		.map(|(name, capture)| (name.clone(), capture.subscribe()))
 		.collect();
 
 	loop {
-		// Poll all receivers
 		let mut any = false;
 		for (_proc_name, rx) in &mut receivers {
 			match rx.try_recv() {
@@ -307,20 +305,17 @@ async fn handle_ws_echo(mut socket: WebSocket, state: AppState, name: String) {
 
 async fn static_handler(uri: Uri) -> impl IntoResponse {
 	let path = uri.path().trim_start_matches('/');
-	
-	// Try exact path first
+
 	if let Some(content) = UiAssets::get(path) {
 		return serve_asset(path, content);
 	}
-	
-	// For SPA routing, serve index.html for any non-asset path
+
 	if !path.starts_with("_app/") && !path.contains('.') {
 		if let Some(content) = UiAssets::get("index.html") {
 			return serve_asset("index.html", content);
 		}
 	}
-	
-	// 404
+
 	Response::builder()
 		.status(StatusCode::NOT_FOUND)
 		.body("Not Found".into())
@@ -329,7 +324,7 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
 
 fn serve_asset(path: &str, content: rust_embed::EmbeddedFile) -> Response {
 	let mime = mime_guess::from_path(path).first_or_octet_stream();
-	
+
 	Response::builder()
 		.status(StatusCode::OK)
 		.header(header::CONTENT_TYPE, mime.as_ref())

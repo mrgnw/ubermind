@@ -1,5 +1,10 @@
+mod config;
+mod daemon;
 mod launchd;
+mod logs;
+mod protocol;
 mod self_update;
+mod types;
 
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Write};
@@ -7,9 +12,9 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
-use ubermind_core::config::{self, ServiceEntry};
-use ubermind_core::protocol::{self, Request, Response};
-use ubermind_core::types::*;
+use config::ServiceEntry;
+use protocol::{Request, Response};
+use types::*;
 use owo_colors::OwoColorize;
 
 fn main() {
@@ -53,8 +58,6 @@ fn main() {
 			}
 		}
 		name => {
-			// Flexible arg ordering: treat first arg as service name
-			// Also handle dot syntax: "matrix.automation" as a service ref
 			let services = config::load_service_entries();
 			let base_name = name.split('.').next().unwrap_or(name);
 			if services.contains_key(base_name) && args.len() > 1 {
@@ -201,7 +204,6 @@ fn cmd_add(args: &[String]) {
 		std::process::exit(1);
 	}
 
-	// Check for duplicate
 	if let Ok(content) = std::fs::read_to_string(&projects_file) {
 		for line in content.lines() {
 			let line = line.trim();
@@ -217,7 +219,6 @@ fn cmd_add(args: &[String]) {
 		}
 	}
 
-	// Check for Procfile
 	let procfile = dir.join("Procfile");
 	if !procfile.exists() {
 		eprintln!("note: no Procfile found in {}", dir.display());
@@ -246,12 +247,12 @@ fn ensure_daemon() -> UnixStream {
 		return stream;
 	}
 
-	// Auto-start daemon
 	eprintln!("starting daemon...");
 	let daemon_bin = find_daemon_binary();
 
 	let mut cmd = Command::new(&daemon_bin);
-	cmd.stdout(std::process::Stdio::null())
+	cmd.args(["daemon", "run"])
+		.stdout(std::process::Stdio::null())
 		.stderr(std::process::Stdio::null());
 
 	match cmd.spawn() {
@@ -263,7 +264,6 @@ fn ensure_daemon() -> UnixStream {
 		}
 	}
 
-	// Wait for socket
 	for _ in 0..50 {
 		std::thread::sleep(std::time::Duration::from_millis(100));
 		if let Some(stream) = connect_daemon() {
@@ -276,17 +276,7 @@ fn ensure_daemon() -> UnixStream {
 }
 
 fn find_daemon_binary() -> PathBuf {
-	// Look next to the CLI binary first
-	if let Ok(exe) = std::env::current_exe() {
-		if let Some(dir) = exe.parent() {
-			let daemon = dir.join("ubermind-daemon");
-			if daemon.exists() {
-				return daemon;
-			}
-		}
-	}
-	// Fall back to PATH
-	PathBuf::from("ubermind-daemon")
+	std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ubermind"))
 }
 
 fn send_request(request: &Request) -> Response {
@@ -307,7 +297,7 @@ fn send_request(request: &Request) -> Response {
 // --- Commands that talk to daemon ---
 
 fn cmd_status(args: &[String]) {
-	let (watch, rest) = parse_watch_opts(args, None); // None = indefinite watch
+	let (watch, rest) = parse_watch_opts(args, None);
 	if watch.enabled {
 		watch_status(&rest, &watch);
 	} else {
@@ -342,7 +332,7 @@ fn print_process_line(proc: &ProcessStatus, name_width: usize) {
 }
 
 fn cmd_start(args: &[String]) {
-	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
+	let (mut watch, rest) = parse_watch_opts(args, Some(4));
 	let entries = config::load_service_entries();
 
 	let start_all = rest.iter().any(|a| is_all_flag(a));
@@ -356,7 +346,6 @@ fn cmd_start(args: &[String]) {
 		for arg in &rest {
 			let (svc, proc) = resolve_dot_target(arg, &entries);
 			if let Some(p) = proc {
-				// Dot-syntax: service.process or .process
 				if !service_names.contains(&svc) {
 					service_names.push(svc);
 				}
@@ -364,12 +353,10 @@ fn cmd_start(args: &[String]) {
 					target_processes.push(p);
 				}
 			} else if entries.contains_key(&svc) {
-				// Known service name
 				if !service_names.contains(&svc) {
 					service_names.push(svc);
 				}
 			} else if let Some(current) = get_current_project(&entries) {
-				// Not a service — treat as process name in current project
 				if !service_names.contains(&current) {
 					service_names.push(current);
 				}
@@ -403,8 +390,7 @@ fn cmd_start(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			
-			// Always watch after start - default 4 seconds unless --watch was explicitly used
+
 			if !watch.enabled {
 				watch.enabled = true;
 				watch.duration = Some(4);
@@ -420,7 +406,7 @@ fn cmd_start(args: &[String]) {
 }
 
 fn cmd_stop(args: &[String]) {
-	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
+	let (mut watch, rest) = parse_watch_opts(args, Some(4));
 	let entries = config::load_service_entries();
 	let names = resolve_target_names(&rest, &entries);
 
@@ -438,8 +424,7 @@ fn cmd_stop(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			
-			// Always watch after stop - default 4 seconds unless --watch was explicitly used
+
 			if !watch.enabled {
 				watch.enabled = true;
 				watch.duration = Some(4);
@@ -455,7 +440,7 @@ fn cmd_stop(args: &[String]) {
 }
 
 fn cmd_reload(args: &[String]) {
-	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
+	let (mut watch, rest) = parse_watch_opts(args, Some(4));
 	let entries = config::load_service_entries();
 
 	let reload_all = rest.iter().any(|a| is_all_flag(a));
@@ -480,8 +465,7 @@ fn cmd_reload(args: &[String]) {
 				}
 			}
 			std::thread::sleep(std::time::Duration::from_millis(500));
-			
-			// Always watch after reload - default 4 seconds unless --watch was explicitly used
+
 			if !watch.enabled {
 				watch.enabled = true;
 				watch.duration = Some(4);
@@ -497,16 +481,14 @@ fn cmd_reload(args: &[String]) {
 }
 
 fn cmd_restart(args: &[String]) {
-	let (mut watch, rest) = parse_watch_opts(args, Some(4)); // 4 seconds default
+	let (mut watch, rest) = parse_watch_opts(args, Some(4));
 	let entries = config::load_service_entries();
 
-	// Always enable watch with 4 second default unless explicitly specified
 	if !watch.enabled {
 		watch.enabled = true;
 		watch.duration = Some(4);
 	}
 
-	// Reconstruct watch args to pass through to cmd_reload
 	let mut reload_extra: Vec<String> = Vec::new();
 	reload_extra.push("--watch".to_string());
 	if let Some(d) = watch.duration {
@@ -517,9 +499,7 @@ fn cmd_restart(args: &[String]) {
 		reload_extra.push(watch.interval.to_string());
 	}
 
-	// Context-aware: supports dot-syntax (.process, service.process), bare process names, and service names
 	let (service, process) = if rest.is_empty() {
-		// No args - reload current service
 		if let Some(current) = get_current_project(&entries) {
 			let mut reload_args = vec![current];
 			reload_args.extend(reload_extra);
@@ -530,17 +510,14 @@ fn cmd_restart(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else if rest.len() == 1 {
-		// Check for dot-syntax first (.process or service.process)
 		let (svc, proc) = resolve_dot_target(&rest[0], &entries);
 		if let Some(proc_name) = proc {
 			(svc, Some(proc_name))
 		} else if entries.contains_key(&svc) {
-			// It's a service name - reload it
 			let mut reload_args = vec![svc];
 			reload_args.extend(reload_extra);
 			return cmd_reload(&reload_args);
 		} else if let Some(current) = get_current_project(&entries) {
-			// Treat arg as process name in current service
 			(current, Some(svc))
 		} else {
 			eprintln!("unknown service: {}", rest[0]);
@@ -548,7 +525,6 @@ fn cmd_restart(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else {
-		// Two or more args - first is service, second is process
 		let (svc, proc) = resolve_dot_target(&rest[0], &entries);
 		(svc, proc.or_else(|| Some(rest[1].clone())))
 	};
@@ -595,7 +571,7 @@ fn cmd_logs(args: &[String]) {
 		(svc, proc.or_else(|| args.get(1).map(|s| s.to_string())))
 	};
 
-	let log_dir = ubermind_core::logs::service_log_dir(&service);
+	let log_dir = logs::service_log_dir(&service);
 	if !log_dir.exists() {
 		eprintln!("no logs for {}", service);
 		std::process::exit(1);
@@ -659,7 +635,7 @@ fn cmd_tail(args: &[String]) {
 		(svc, proc.or_else(|| args.get(1).cloned()))
 	};
 
-	let log_dir = ubermind_core::logs::service_log_dir(&service);
+	let log_dir = logs::service_log_dir(&service);
 	if !log_dir.exists() {
 		eprintln!("no logs for {}", service);
 		std::process::exit(1);
@@ -716,7 +692,6 @@ fn cmd_echo(args: &[String]) {
 		(svc, proc.or_else(|| args.get(1).cloned()))
 	};
 
-	// Loop continuously, fetching and printing logs
 	loop {
 		let response = send_request(&Request::Logs {
 			service: service.clone(),
@@ -735,26 +710,22 @@ fn cmd_echo(args: &[String]) {
 			}
 			_ => {}
 		}
-		
-		// Small delay to avoid hammering the daemon
+
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
 }
 
 fn cmd_show(args: &[String]) {
 	let entries = config::load_service_entries();
-	
-	// Handle "ub appligator show api" - skip "show" if it's in args[1]
+
 	let filtered_args: Vec<String> = if args.len() >= 2 && args[1] == "show" {
-		// Skip the "show" command: ["appligator", "show", "api"] -> ["appligator", "api"]
 		let mut new_args = vec![args[0].clone()];
 		new_args.extend_from_slice(&args[2..]);
 		new_args
 	} else {
 		args.to_vec()
 	};
-	
-	// Context-aware: if no args, show current service's Procfile
+
 	let (service_name, process_name) = if filtered_args.is_empty() {
 		if let Some(current) = get_current_project(&entries) {
 			(current, None)
@@ -764,12 +735,9 @@ fn cmd_show(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else if filtered_args.len() == 1 {
-		// One arg - could be service name or process name in current service
 		if entries.contains_key(&filtered_args[0]) {
-			// It's a service name - show its Procfile
 			(filtered_args[0].clone(), None)
 		} else if let Some(current) = get_current_project(&entries) {
-			// Treat arg as process name in current service
 			(current, Some(filtered_args[0].clone()))
 		} else {
 			eprintln!("unknown service: {}", filtered_args[0]);
@@ -777,7 +745,6 @@ fn cmd_show(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else {
-		// Two or more args - first is service, second is process
 		(filtered_args[0].clone(), Some(filtered_args[1].clone()))
 	};
 
@@ -790,7 +757,7 @@ fn cmd_show(args: &[String]) {
 	};
 
 	let procfile_path = service_entry.dir.join("Procfile");
-	
+
 	if !procfile_path.exists() {
 		eprintln!("Procfile not found: {}", procfile_path.display());
 		std::process::exit(1);
@@ -805,7 +772,6 @@ fn cmd_show(args: &[String]) {
 	};
 
 	if let Some(proc_name) = process_name {
-		// Show specific process command
 		let mut found = false;
 		for line in content.lines() {
 			let line = line.trim();
@@ -825,7 +791,6 @@ fn cmd_show(args: &[String]) {
 			std::process::exit(1);
 		}
 	} else {
-		// Show entire Procfile with syntax highlighting
 		println!("{}", procfile_path.display().dimmed());
 		println!();
 		for line in content.lines() {
@@ -857,15 +822,24 @@ fn cmd_daemon(args: &[String]) {
 	let subcmd = args.first().map(|s| s.as_str()).unwrap_or("status");
 
 	match subcmd {
+		"run" => {
+			// Run the daemon in-process (this is the actual daemon entry point)
+			let daemon_args: Vec<String> = args[1..].to_vec();
+			tokio::runtime::Runtime::new()
+				.unwrap()
+				.block_on(daemon::run(&daemon_args));
+		}
 		"start" => {
 			if connect_daemon().is_some() {
 				eprintln!("daemon already running");
 				return;
 			}
-			let extra_args: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
+			let extra_args: Vec<String> = args[1..].iter().cloned().collect();
 			let daemon_bin = find_daemon_binary();
 			let mut cmd = Command::new(&daemon_bin);
-			cmd.args(&extra_args)
+			let mut spawn_args = vec!["daemon".to_string(), "run".to_string()];
+			spawn_args.extend(extra_args);
+			cmd.args(&spawn_args)
 				.stdout(std::process::Stdio::null())
 				.stderr(std::process::Stdio::null());
 			match cmd.spawn() {
@@ -894,7 +868,7 @@ fn cmd_daemon(args: &[String]) {
 			}
 		}
 		_ => {
-			eprintln!("usage: ub daemon [start|stop|status]");
+			eprintln!("usage: ub daemon [start|stop|status|run]");
 		}
 	}
 }
@@ -911,32 +885,19 @@ fn cmd_serve(args: &[String]) {
 	} else if has_daemon {
 		cmd_daemon(&vec!["start".to_string(), "--http".to_string()]);
 	} else {
-		// Foreground
-		let daemon_bin = find_daemon_binary();
-		let mut cmd = Command::new(&daemon_bin);
-		cmd.args(["--foreground", "--http"]);
-		let status = cmd.status().unwrap_or_else(|e| {
-			eprintln!("error: {}", e);
-			std::process::exit(1);
-		});
-		std::process::exit(status.code().unwrap_or(1));
+		// Foreground: run daemon in-process with --http
+		cmd_daemon(&vec!["run".to_string(), "--foreground".to_string(), "--http".to_string()]);
 	}
 }
 
 // --- Watch support ---
 
 struct WatchOpts {
-	/// Duration to watch in seconds. None = indefinite.
 	duration: Option<u64>,
-	/// Refresh interval in seconds.
 	interval: u64,
-	/// Whether --watch was specified.
 	enabled: bool,
 }
 
-/// Parse --watch / -w and --watch-interval from args, returning the opts and remaining args.
-/// default_duration: duration to use if --watch is specified without a number.
-/// Pass None for indefinite watch (status command), Some(4) for others.
 fn parse_watch_opts(args: &[String], default_duration: Option<u64>) -> (WatchOpts, Vec<String>) {
 	let mut opts = WatchOpts {
 		duration: None,
@@ -949,14 +910,12 @@ fn parse_watch_opts(args: &[String], default_duration: Option<u64>) -> (WatchOpt
 		match args[i].as_str() {
 			"--watch" | "-w" => {
 				opts.enabled = true;
-				// Next arg might be a number (duration)
 				if i + 1 < args.len() {
 					if let Ok(n) = args[i + 1].parse::<u64>() {
 						opts.duration = Some(n);
 						i += 1;
 					}
 				}
-				// If no number follows, use the default duration
 				if opts.duration.is_none() {
 					opts.duration = default_duration;
 				}
@@ -976,7 +935,6 @@ fn parse_watch_opts(args: &[String], default_duration: Option<u64>) -> (WatchOpt
 	(opts, rest)
 }
 
-/// Fetch current status from daemon.
 fn fetch_status() -> (Vec<ServiceStatus>, Option<u16>) {
 	let response = send_request(&Request::Status);
 	match response {
@@ -992,12 +950,10 @@ fn fetch_status() -> (Vec<ServiceStatus>, Option<u16>) {
 	}
 }
 
-/// Render status to stdout. Returns the number of lines printed.
 fn render_status(args: &[String]) -> usize {
 	let (services, http_port) = fetch_status();
 	let entries = config::load_service_entries();
 
-	// Check for dot syntax targeting a specific process
 	let (process_filter, resolved_args) = if let Some(first) = args.first() {
 		let (svc, proc) = resolve_dot_target(first, &entries);
 		let rest: Vec<String> = std::iter::once(svc).chain(args[1..].iter().cloned()).collect();
@@ -1040,7 +996,6 @@ fn render_status(args: &[String]) -> usize {
 		});
 	}
 
-	// Single process via dot syntax
 	if let Some(ref proc_name) = process_filter {
 		for name in &sorted_filter {
 			if let Some(status) = status_map.get(name) {
@@ -1111,14 +1066,12 @@ fn render_status(args: &[String]) -> usize {
 	lines
 }
 
-/// Watch loop: repeatedly render status with cursor-up overwrite.
 fn watch_status(args: &[String], opts: &WatchOpts) {
 	let start = Instant::now();
 	let mut prev_lines = 0usize;
 	let stdout = io::stdout();
 
 	loop {
-		// Move cursor up to overwrite previous output, erase below
 		if prev_lines > 0 {
 			print!("\x1b[{}A\x1b[J", prev_lines);
 			let _ = stdout.lock().flush();
@@ -1127,7 +1080,6 @@ fn watch_status(args: &[String], opts: &WatchOpts) {
 		prev_lines = render_status(args);
 		let _ = stdout.lock().flush();
 
-		// Check if duration exceeded
 		if let Some(duration) = opts.duration {
 			if start.elapsed().as_secs() >= duration {
 				return;
@@ -1158,8 +1110,6 @@ fn format_uptime(secs: u64) -> String {
 	}
 }
 
-/// Parse a dot-separated target like "matrix.automation" into (service, Some(process))
-/// or "matrix" into (service, None). Leading dot like ".baibot" returns ("", Some("baibot")).
 fn parse_dot_target(name: &str) -> (&str, Option<&str>) {
 	if let Some(dot) = name.find('.') {
 		(&name[..dot], Some(&name[dot + 1..]))
@@ -1168,8 +1118,6 @@ fn parse_dot_target(name: &str) -> (&str, Option<&str>) {
 	}
 }
 
-/// Like parse_dot_target but resolves empty service to current project.
-/// Returns owned strings. Exits on error if leading dot used outside a project dir.
 fn resolve_dot_target(name: &str, entries: &BTreeMap<String, ServiceEntry>) -> (String, Option<String>) {
 	let (svc, proc) = parse_dot_target(name);
 	if svc.is_empty() {
@@ -1205,7 +1153,6 @@ fn get_current_project(entries: &BTreeMap<String, ServiceEntry>) -> Option<Strin
 
 fn resolve_target_names(args: &[String], entries: &BTreeMap<String, ServiceEntry>) -> Vec<String> {
 	if args.is_empty() {
-		// Context-aware: check if cwd matches a registered service
 		if let Ok(cwd) = std::env::current_dir() {
 			let cwd = cwd.canonicalize().unwrap_or(cwd);
 			for (name, entry) in entries {
