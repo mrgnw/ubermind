@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/muzan", "crates/kagaya", "crates/ubermind-cli"]
+members = ["crates/muzan", "crates/kagaya"]
 resolver = "2"
 
 [workspace.package]
