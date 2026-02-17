@@ -1,14 +1,17 @@
 use std::path::PathBuf;
 
+/// Log directory for a specific service: `{log_dir}/{service}/`.
 pub fn service_log_dir(log_dir: &std::path::Path, service: &str) -> PathBuf {
 	log_dir.join(service)
 }
 
+/// Generate log filename for today: `{process} {YY-MMDD}.log`.
 pub fn current_log_name(process: &str) -> String {
 	let now = now_ymd();
 	format!("{} {}.log", process, now)
 }
 
+/// Generate a rotated log filename with hour (and minute if needed for uniqueness).
 pub fn rotated_log_name(log_dir: &std::path::Path, process: &str) -> String {
 	let (date, hour, minute) = now_ymdhm();
 	let candidate = format!("{} {} {}.log", process, date, hour);
@@ -20,6 +23,7 @@ pub fn rotated_log_name(log_dir: &std::path::Path, process: &str) -> String {
 	}
 }
 
+/// Parse `(year, month, day)` from a log filename like `web 26-0214.log`.
 pub fn parse_log_date(filename: &str) -> Option<(u32, u32, u32)> {
 	let parts: Vec<&str> = filename.splitn(2, ' ').collect();
 	if parts.len() < 2 {
@@ -46,6 +50,7 @@ pub fn parse_log_date(filename: &str) -> Option<(u32, u32, u32)> {
 	Some((year, month, day))
 }
 
+/// Delete old logs: remove files older than `max_age_days` and trim to `max_files` per service.
 pub fn expire_logs(log_dir: &std::path::Path, max_age_days: u32, max_files: u32) {
 	if !log_dir.exists() {
 		return;
@@ -112,6 +117,7 @@ fn expire_service_logs(dir: &std::path::Path, max_age_days: u32, max_files: u32)
 	}
 }
 
+/// Convert Unix timestamp to `(year, month, day, hour, minute)`.
 pub fn secs_to_datetime(secs: u64) -> (u32, u32, u32, u32, u32) {
 	let days = (secs / 86400) as i64;
 	let time_of_day = secs % 86400;

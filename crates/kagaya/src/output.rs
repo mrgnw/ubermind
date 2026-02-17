@@ -10,6 +10,11 @@ use crate::logs;
 
 const RING_BUFFER_SIZE: usize = 64 * 1024;
 
+/// Captures process output to a ring buffer, log file, and broadcast channel.
+///
+/// - **Ring buffer**: 64KB in-memory for instant snapshots
+/// - **Log file**: Appends to disk with automatic rotation by size
+/// - **Broadcast**: Live streaming to subscribers (e.g. WebSocket)
 #[derive(Clone)]
 pub struct OutputCapture {
 	ring: Arc<Mutex<VecDeque<u8>>>,
@@ -27,6 +32,7 @@ struct LogWriter {
 }
 
 impl OutputCapture {
+	/// Create a new output capture, opening a log file in `{log_dir}/{service}/`.
 	pub fn new(log_dir: &Path, service: &str, process: &str, max_log_size: u64) -> Self {
 		let svc_log_dir = logs::service_log_dir(log_dir, service);
 		let _ = fs::create_dir_all(&svc_log_dir);
@@ -62,6 +68,7 @@ impl OutputCapture {
 		}
 	}
 
+	/// Write data to ring buffer, log file, and broadcast channel.
 	pub async fn write(&self, data: &[u8]) {
 		{
 			let mut ring = self.ring.lock().await;
@@ -81,11 +88,13 @@ impl OutputCapture {
 		let _ = self.sender.send(data.to_vec());
 	}
 
+	/// Get a snapshot of the ring buffer contents.
 	pub async fn snapshot(&self) -> Vec<u8> {
 		let ring = self.ring.lock().await;
 		ring.iter().copied().collect()
 	}
 
+	/// Subscribe to live output updates.
 	pub fn subscribe(&self) -> broadcast::Receiver<Vec<u8>> {
 		self.sender.subscribe()
 	}

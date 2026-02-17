@@ -10,16 +10,19 @@ use tokio::sync::RwLock;
 use crate::output::OutputCapture;
 use crate::types::*;
 
+/// Configuration for the supervisor.
 pub struct SupervisorConfig {
 	pub log_dir: PathBuf,
 	pub max_log_size: u64,
 }
 
+/// Core process supervisor. Manages named services, each with one or more processes.
 pub struct Supervisor {
 	pub services: Arc<RwLock<HashMap<String, ManagedService>>>,
 	pub config: SupervisorConfig,
 }
 
+/// A service being managed by the supervisor.
 pub struct ManagedService {
 	#[allow(dead_code)]
 	pub name: String,
@@ -28,6 +31,7 @@ pub struct ManagedService {
 	pub processes: HashMap<String, ManagedProcess>,
 }
 
+/// A process being managed within a service.
 pub struct ManagedProcess {
 	pub def: ProcessDef,
 	pub state: ProcessState,
@@ -46,6 +50,7 @@ impl Supervisor {
 		})
 	}
 
+	/// Get status of all managed services.
 	pub async fn status(&self) -> Vec<ServiceStatus> {
 		let services = self.services.read().await;
 		let mut result = Vec::new();
@@ -78,6 +83,9 @@ impl Supervisor {
 		result
 	}
 
+	/// Start a service with the given process definitions.
+	///
+	/// `filter` limits which processes start; empty means use `all` flag or `autostart`.
 	pub async fn start_service(
 		self: &Arc<Self>,
 		name: &str,
@@ -165,6 +173,7 @@ impl Supervisor {
 		Ok(format!("{}: starting", name))
 	}
 
+	/// Stop all processes in a service. Sends SIGTERM then SIGKILL after 3s.
 	pub async fn stop_service(self: &Arc<Self>, name: &str) -> Result<String, String> {
 		let mut services = self.services.write().await;
 		let managed = services
@@ -193,6 +202,7 @@ impl Supervisor {
 		Ok(format!("{}: stopped", name))
 	}
 
+	/// Stop then start a service (with 200ms gap).
 	pub async fn reload_service(
 		self: &Arc<Self>,
 		name: &str,
@@ -206,6 +216,7 @@ impl Supervisor {
 		self.start_service(name, dir, process_defs, all, filter).await
 	}
 
+	/// Restart a single process within a service.
 	pub async fn restart_process(
 		self: &Arc<Self>,
 		service: &str,
@@ -254,6 +265,7 @@ impl Supervisor {
 		Ok(format!("{}/{}: restarting", service, process))
 	}
 
+	/// Kill a single process without restarting.
 	pub async fn kill_process(
 		self: &Arc<Self>,
 		service: &str,
@@ -279,6 +291,7 @@ impl Supervisor {
 		Ok(format!("{}/{}: killed", service, process))
 	}
 
+	/// Get the output capture for a process (or the first process if `process` is None).
 	pub async fn get_output(
 		&self,
 		service: &str,
@@ -305,6 +318,7 @@ impl Supervisor {
 		}
 	}
 
+	/// Get output captures for all processes in a service.
 	pub async fn get_all_outputs(
 		&self,
 		service: &str,
@@ -532,6 +546,7 @@ async fn update_state(
 	}
 }
 
+/// Send SIGTERM to a process group, then SIGKILL after 3 seconds.
 pub fn kill_process_tree(pid: u32) {
 	use nix::sys::signal::{killpg, Signal};
 	use nix::unistd::Pid;
