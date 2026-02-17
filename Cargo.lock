@@ -1511,6 +1511,7 @@ name = "ubermind"
 version = "0.8.0"
 dependencies = [
  "axum",
+ "kagaya",
  "libproc",
  "mime_guess",
  "muzan",

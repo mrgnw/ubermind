@@ -1,5 +1,4 @@
 pub mod api;
-pub mod output;
 pub mod supervisor;
 
 use std::sync::Arc;
@@ -30,14 +29,16 @@ pub async fn run(args: &[String]) {
 		let _ = std::fs::remove_file(&socket_path);
 	}
 
-	output::expire_logs(global_config.logs.max_age_days, global_config.logs.max_files);
+	let log_dir = crate::logs::log_dir();
+	kagaya::logs::expire_logs(&log_dir, global_config.logs.max_age_days, global_config.logs.max_files);
 
 	{
 		let config = global_config.clone();
+		let log_dir = log_dir.clone();
 		tokio::spawn(async move {
 			loop {
 				tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-				output::expire_logs(config.logs.max_age_days, config.logs.max_files);
+				kagaya::logs::expire_logs(&log_dir, config.logs.max_age_days, config.logs.max_files);
 			}
 		});
 	}

@@ -1,5 +1,5 @@
 use crate::daemon::supervisor::Supervisor;
-use crate::types::{ProcessState, ServiceType};
+use kagaya::{ProcessState, ServiceType};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode, Uri};
