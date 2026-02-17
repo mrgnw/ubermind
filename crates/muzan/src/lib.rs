@@ -3,8 +3,14 @@ pub mod server;
 pub mod client;
 pub mod daemon;
 
+#[cfg(feature = "clap")]
+pub mod clap;
+
 pub use paths::DaemonPaths;
 pub use client::{DaemonClient, ClientError};
 pub use daemon::Daemon;
 pub use daemon::ensure_daemon;
 pub use daemon::ensure_daemon_with_args;
+
+#[cfg(feature = "clap")]
+pub use crate::clap::DaemonCommand;
