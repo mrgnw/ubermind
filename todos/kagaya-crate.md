@@ -1,39 +1,40 @@
-# kagaya — process supervisor toolkit for Rust CLIs
+# kagaya — process supervisor toolkit + CLI
 
 branch: muzan
 
 ## Status: implemented
 
-Core supervisor extracted from ubermind and integrated back.
+kagaya replaces ubermind as the user-facing binary (`ky`).
 
-## What
+## Architecture
 
-Extract ubermind's process supervision into a reusable crate called `kagaya`.
-Named after Ubuyashiki Kagaya (Demon Slayer) — the leader who commands and oversees the Demon Slayer Corps.
+- **muzan** — daemon lifecycle library (socket IPC, PID, auto-start)
+- **kagaya** — process supervisor library + CLI binary
+  - Library: types, logs, output capture, supervisor core
+  - Binary (`ky`): CLI, config loading, HTTP/WS API, launchd integration
 
 ## What's done
 
-### Core crate (`crates/kagaya/`)
+### Library (`crates/kagaya/src/`)
 - [x] `types.rs` — ProcessDef, ProcessState, ServiceType, ServiceStatus, ProcessStatus, Service
-- [x] `logs.rs` — Date-based log naming, rotation, expiry, secs_to_datetime
-- [x] `output.rs` — OutputCapture (ring buffer + broadcast + log file with rotation)
-- [x] `supervisor.rs` — Supervisor, ManagedService, ManagedProcess, start/stop/reload/restart/kill
-  - Process lifecycle: spawn via `sh -c`, process groups, SIGTERM/SIGKILL
-  - Restart policy: configurable retries and delay, tasks never restart
-  - Output piping: stdout/stderr -> OutputCapture
+- [x] `logs.rs` — Date-based log naming, rotation, expiry
+- [x] `output.rs` — OutputCapture (ring buffer + broadcast + log file rotation)
+- [x] `supervisor.rs` — Supervisor with start/stop/reload/restart/kill, process lifecycle
 
-### Integration into ubermind
-- [x] `types.rs` — re-exports from kagaya
-- [x] `logs.rs` — thin wrapper delegating to kagaya::logs
-- [x] `daemon/output.rs` — deleted, uses kagaya::OutputCapture directly
-- [x] `daemon/supervisor.rs` — wraps kagaya::Supervisor, adds config loading + port detection
+### CLI binary (`crates/kagaya/src/bin/kagaya/`)
+- [x] `main.rs` — CLI commands (status, start, stop, reload, restart, logs, tail, echo, etc.)
+- [x] `config.rs` — projects.toml + services.toml + config.toml parsing
+- [x] `protocol.rs` — Request/Response types for daemon IPC
+- [x] `daemon/` — daemon entry point, request dispatch, HTTP/WS API
+- [x] `launchd.rs` — macOS launchd agent management
+- [x] `self_update.rs` — self-update from GitHub releases
+- [x] All `ubermind` references replaced with `kagaya`/`ky`
 
-### Verified
-- [x] `cargo check --workspace` — zero warnings
-- [x] `cargo test -p kagaya` — 18 tests pass (2 unit + 16 integration)
-- [x] `cargo test -p ubermind` — 2/2 tests pass
+### Tests
+- [x] 19 kagaya tests (2 unit + 16 integration + 1 doc-test)
+- [x] 15 muzan tests (14 integration + 1 doc-test)
 
 ## Future work
-- Publish to crates.io (alongside muzan)
-- Doc comments on all public API
-- Example binary
+- Publish muzan + kagaya to crates.io
+- Remove/archive ubermind-cli crate
+- Rename GitHub repo
