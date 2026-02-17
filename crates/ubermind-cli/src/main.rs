@@ -16,11 +16,11 @@ fn main() {
 	let args: Vec<String> = std::env::args().skip(1).collect();
 
 	if args.is_empty() {
-		if connect_daemon().is_some() {
-			render_status(&[]);
-			eprintln!();
-		}
 		print_usage();
+		if connect_daemon().is_some() {
+			eprintln!();
+			render_status(&[]);
+		}
 		check_alias_hint();
 		return;
 	}
