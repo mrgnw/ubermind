@@ -1111,16 +1111,56 @@ fn resolve_target_names(args: &[String], entries: &BTreeMap<String, ServiceEntry
 }
 
 fn check_alias_hint() {
-	let exe = std::env::current_exe().unwrap_or_default();
-	let name = exe.file_name().unwrap_or_default().to_string_lossy();
-	if name == "kagaya" {
-		if let Some(dir) = exe.parent() {
-			let ky = dir.join("ky");
-			if !ky.exists() {
-				eprintln!();
-				eprintln!("tip: create a shorter alias:");
-				eprintln!("ln -s {} {}", exe.display(), ky.display());
-			}
+	let shell = detect_shell();
+	let rc_file = shell_rc_file(&shell);
+
+	let mut hints: Vec<String> = Vec::new();
+
+	// Check if 'ky' alias/binary exists
+	if !command_exists("ky") {
+		hints.push("alias ky='kagaya'".to_string());
+	}
+
+	// Check if 'lctl' alias/binary exists
+	if !command_exists("lctl") {
+		hints.push("alias lctl='ky launchd'".to_string());
+	}
+
+	if hints.is_empty() {
+		return;
+	}
+
+	eprintln!();
+	eprintln!("tip: add to {}:", rc_file);
+	for hint in &hints {
+		eprintln!("  {}", hint);
+	}
+}
+
+fn detect_shell() -> String {
+	// Check SHELL env var
+	if let Ok(shell) = std::env::var("SHELL") {
+		if let Some(name) = shell.rsplit('/').next() {
+			return name.to_string();
 		}
 	}
+	"bash".to_string()
+}
+
+fn shell_rc_file(shell: &str) -> String {
+	let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+	match shell {
+		"zsh" => format!("{}/.zshrc", home),
+		"fish" => format!("{}/.config/fish/config.fish", home),
+		"bash" => format!("{}/.bashrc", home),
+		_ => format!("~/.{}rc", shell),
+	}
+}
+
+fn command_exists(name: &str) -> bool {
+	std::process::Command::new("sh")
+		.args(["-c", &format!("command -v {} >/dev/null 2>&1", name)])
+		.status()
+		.map(|s| s.success())
+		.unwrap_or(false)
 }
