@@ -1,5 +1,6 @@
 mod config;
 mod daemon;
+mod koku_client;
 mod launchd;
 mod logs;
 mod migrate;
@@ -55,6 +56,7 @@ fn main() {
 			let force = args[1..].iter().any(|a| a == "--force" || a == "-f");
 			migrate::cmd_migrate(force);
 		}
+		"cron" => cmd_cron(&args[1..]),
 		"launchd" | "launch" | "lctl" => launchd::cmd_launchd(&args[1..]),
 		"self" => {
 			match args.get(1).map(|s| s.as_str()) {
@@ -131,6 +133,14 @@ fn print_usage() {
 	eprintln!("  {} [name] [dir]             Register a project", "add".bold());
 	eprintln!("  {}                         Create config files", "init".bold());
 	eprintln!("  {} [--force]             Migrate ubermind Procfiles to kagaya TOML", "migrate".bold());
+	eprintln!();
+
+	eprintln!("{}", "cron (via koku)".cyan().bold());
+	eprintln!("  {} [status|--json]       Show cron job status", "cron".bold());
+	eprintln!("  {} run <name>             Trigger a one-off run", "cron".bold());
+	eprintln!("  {} pause <name>           Pause a cron job", "cron".bold());
+	eprintln!("  {} resume <name>          Resume a cron job", "cron".bold());
+	eprintln!("  {} reload                 Reload koku config", "cron".bold());
 	eprintln!();
 
 	eprintln!("{}", "system".cyan().bold());
@@ -764,6 +774,95 @@ fn cmd_show(args: &[String]) {
 	}
 }
 
+fn cmd_cron(args: &[String]) {
+	let subcmd = args.first().map(|s| s.as_str()).unwrap_or("status");
+
+	match subcmd {
+		"status" | "st" => {
+			let json = args.iter().any(|a| a == "--json");
+			match koku_client::fetch_status() {
+				Some(jobs) => {
+					if json {
+						println!("{}", serde_json::to_string_pretty(&jobs).unwrap());
+					} else if jobs.is_empty() {
+						eprintln!("no cron jobs configured");
+					} else {
+						let max_name = jobs.iter().map(|j| j.name.len()).max().unwrap_or(0);
+						for job in &jobs {
+							let sym = koku_client::state_symbol(&job.state);
+							let extra = match (&job.last_exit, &job.next_run) {
+								(Some(code), Some(next)) => format!("exit {}  next {}", code, next),
+								(Some(code), None) => format!("exit {}", code),
+								(None, Some(next)) => format!("next {}", next),
+								(None, None) => String::new(),
+							};
+							println!("  {} {:<width$} {}{}", sym, job.name, job.state,
+								if extra.is_empty() { String::new() } else { format!("  {}", extra) },
+								width = max_name);
+						}
+					}
+				}
+				None => {
+					eprintln!("koku daemon not running");
+					std::process::exit(1);
+				}
+			}
+		}
+		"run" => {
+			let name = args.get(1).unwrap_or_else(|| {
+				eprintln!("usage: ky cron run <name>");
+				std::process::exit(1);
+			});
+			match koku_client::run_job(name) {
+				Ok(msg) => eprintln!("{}", msg),
+				Err(e) => {
+					eprintln!("error: {}", e);
+					std::process::exit(1);
+				}
+			}
+		}
+		"pause" => {
+			let name = args.get(1).unwrap_or_else(|| {
+				eprintln!("usage: ky cron pause <name>");
+				std::process::exit(1);
+			});
+			match koku_client::pause_job(name) {
+				Ok(msg) => eprintln!("{}", msg),
+				Err(e) => {
+					eprintln!("error: {}", e);
+					std::process::exit(1);
+				}
+			}
+		}
+		"resume" => {
+			let name = args.get(1).unwrap_or_else(|| {
+				eprintln!("usage: ky cron resume <name>");
+				std::process::exit(1);
+			});
+			match koku_client::resume_job(name) {
+				Ok(msg) => eprintln!("{}", msg),
+				Err(e) => {
+					eprintln!("error: {}", e);
+					std::process::exit(1);
+				}
+			}
+		}
+		"reload" => {
+			match koku_client::reload() {
+				Ok(msg) => eprintln!("{}", msg),
+				Err(e) => {
+					eprintln!("error: {}", e);
+					std::process::exit(1);
+				}
+			}
+		}
+		_ => {
+			eprintln!("usage: ky cron [status|run|pause|resume|reload]");
+			std::process::exit(1);
+		}
+	}
+}
+
 fn cmd_daemon(args: &[String]) {
 	let subcmd = args.first().map(|s| s.as_str()).unwrap_or("status");
 	let paths = daemon_paths();
@@ -992,6 +1091,51 @@ fn render_status(args: &[String]) -> usize {
 		} else {
 			println!("{} {}  not running", "○".dimmed(), "serve".bold());
 		}
+		lines += 1;
+
+		lines += render_cron_status();
+	}
+
+	lines
+}
+
+fn render_cron_status() -> usize {
+	let jobs = match koku_client::fetch_status() {
+		Some(jobs) if !jobs.is_empty() => jobs,
+		_ => return 0,
+	};
+
+	let mut lines = 0;
+	println!();
+	lines += 1;
+
+	let has_running = jobs.iter().any(|j| j.state == koku::JobState::Running);
+	let symbol = if has_running { "●".green().to_string() } else { "○".dimmed().to_string() };
+	println!("{} {}", symbol, "cron".bold());
+	lines += 1;
+
+	let max_name = jobs.iter().map(|j| j.name.len()).max().unwrap_or(0);
+
+	for job in &jobs {
+		let sym = koku_client::state_symbol(&job.state);
+		let state_str = job.state.to_string();
+		let (sym_colored, state_colored) = match job.state {
+			koku::JobState::Running => (sym.green().to_string(), state_str.green().to_string()),
+			koku::JobState::Idle => (sym.dimmed().to_string(), state_str.dimmed().to_string()),
+			koku::JobState::Paused => (sym.dimmed().to_string(), state_str.dimmed().to_string()),
+			koku::JobState::Failing => (sym.yellow().to_string(), state_str.yellow().to_string()),
+			koku::JobState::Stopped => (sym.red().to_string(), state_str.red().to_string()),
+		};
+
+		let extra = match (&job.last_exit, &job.next_run) {
+			(Some(code), Some(next)) => format!("exit {}  next {}", code, next),
+			(Some(code), None) => format!("exit {}", code),
+			(None, Some(next)) => format!("next {}", next),
+			(None, None) => String::new(),
+		};
+
+		let extra_str = if extra.is_empty() { String::new() } else { format!("  {}", extra) };
+		println!("  {} {:<width$} {}{}", sym_colored, job.name, state_colored, extra_str, width = max_name);
 		lines += 1;
 	}
 

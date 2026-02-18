@@ -40,6 +40,10 @@ pub fn router(supervisor: Arc<Supervisor>) -> Router {
 		)
 		.route("/api/services/{name}/echo", get(echo_service))
 		.route("/ws/echo/{name}", get(ws_echo))
+		.route("/api/cron", get(cron_status))
+		.route("/api/cron/{name}/run", post(cron_run))
+		.route("/api/cron/{name}/pause", post(cron_pause))
+		.route("/api/cron/{name}/resume", post(cron_resume))
 		.fallback(static_handler)
 		.layer(CorsLayer::permissive())
 		.with_state(state)
@@ -235,6 +239,41 @@ async fn kill_process(
 				Json(ErrorResponse { error: e }),
 			)
 		})
+}
+
+async fn cron_status() -> Result<Json<Vec<koku::JobStatus>>, (StatusCode, Json<ErrorResponse>)> {
+	crate::koku_client::fetch_status()
+		.map(Json)
+		.ok_or_else(|| {
+			(
+				StatusCode::SERVICE_UNAVAILABLE,
+				Json(ErrorResponse { error: "koku daemon not running".to_string() }),
+			)
+		})
+}
+
+async fn cron_run(
+	Path(name): Path<String>,
+) -> Result<Json<ActionResponse>, (StatusCode, Json<ErrorResponse>)> {
+	crate::koku_client::run_job(&name)
+		.map(|msg| Json(ActionResponse { message: msg }))
+		.map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })))
+}
+
+async fn cron_pause(
+	Path(name): Path<String>,
+) -> Result<Json<ActionResponse>, (StatusCode, Json<ErrorResponse>)> {
+	crate::koku_client::pause_job(&name)
+		.map(|msg| Json(ActionResponse { message: msg }))
+		.map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })))
+}
+
+async fn cron_resume(
+	Path(name): Path<String>,
+) -> Result<Json<ActionResponse>, (StatusCode, Json<ErrorResponse>)> {
+	crate::koku_client::resume_job(&name)
+		.map(|msg| Json(ActionResponse { message: msg }))
+		.map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })))
 }
 
 async fn echo_service(
