@@ -55,7 +55,7 @@ fn main() {
 			let force = args[1..].iter().any(|a| a == "--force" || a == "-f");
 			migrate::cmd_migrate(force);
 		}
-		"launchd" | "launch" => launchd::cmd_launchd(&args[1..]),
+		"launchd" | "launch" | "lctl" => launchd::cmd_launchd(&args[1..]),
 		"self" => {
 			match args.get(1).map(|s| s.as_str()) {
 				Some("update") => self_update::cmd_self_update(),
